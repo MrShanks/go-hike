@@ -2,15 +2,20 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"math"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 )
 
 func TestParseGPXCalculatesTrackDetails(t *testing.T) {
-	contents := []byte(`<?xml version="1.0"?><gpx><trk><name>Ridge Walk</name><trkseg>
+	contents := []byte(`<?xml version="1.0"?><gpx><trk><name>Ridge Walk</name><type>running</type><trkseg>
 		<trkpt lat="46.0000" lon="7.0000"><ele>1000</ele><name>Valley Station</name><time>2026-08-20T08:00:00Z</time></trkpt>
 		<trkpt lat="46.0090" lon="7.0000"><ele>1120</ele><time>2026-08-20T08:30:00Z</time></trkpt>
 		<trkpt lat="46.0090" lon="7.0130"><ele>1100</ele><name>Lake Hut</name><time>2026-08-20T09:00:00Z</time></trkpt>
@@ -22,6 +27,9 @@ func TestParseGPXCalculatesTrackDetails(t *testing.T) {
 	}
 	if result.Name != "Ridge Walk" {
 		t.Fatalf("Name = %q, want Ridge Walk", result.Name)
+	}
+	if result.Activity != "Running" || result.ActivityType != "running" {
+		t.Errorf("Activity = %q (%q), want Running (running)", result.Activity, result.ActivityType)
 	}
 	if math.Abs(result.DistanceKM-2.0) > 0.05 {
 		t.Errorf("DistanceKM = %.3f, want approximately 2.0", result.DistanceKM)
@@ -102,5 +110,66 @@ func TestValidCoordinatesRejectsNonFiniteValues(t *testing.T) {
 	}
 	if !validCoordinates(0, 0) {
 		t.Error("validCoordinates() rejected the valid coordinate 0, 0")
+	}
+}
+
+func TestActivityName(t *testing.T) {
+	tests := map[string]string{
+		"lap_swimming":    "Swimming",
+		"gravel_cycling":  "Gravel cycling",
+		"hiking":          "Hiking",
+		"hikingTourTrail": "Hiking",
+		"bouldering":      "Bouldering",
+		"":                "Activity",
+	}
+	for activityType, want := range tests {
+		if got := activityName(activityType); got != want {
+			t.Errorf("activityName(%q) = %q, want %q", activityType, got, want)
+		}
+	}
+}
+
+func TestImportTracksKeepsValidFilesWhenAnotherIsRejected(t *testing.T) {
+	valid := []byte(`<gpx><trk><name>Run</name><type>running</type><trkseg>
+		<trkpt lat="46" lon="7"/><trkpt lat="46.01" lon="7.01"/>
+	</trkseg></trk></gpx>`)
+	invalid := []byte(`<gpx><trk><name>Pool swim</name><type>lap_swimming</type><trkseg/></trk></gpx>`)
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	for name, contents := range map[string][]byte{"run.gpx": valid, "swim.gpx": invalid} {
+		part, err := writer.CreateFormFile("files", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(contents); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tracks", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app := &server{dataDir: t.TempDir()}
+	app.importTracks(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	var result trackImportResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Imported) != 1 || result.Imported[0].Activity != "Running" {
+		t.Errorf("Imported = %#v, want one running activity", result.Imported)
+	}
+	if len(result.Rejected) != 1 || result.Rejected[0].Name != "swim.gpx" || result.Rejected[0].Reason == "" {
+		t.Errorf("Rejected = %#v, want swim.gpx with a reason", result.Rejected)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(app.dataDir, "*.gpx")); len(matches) != 1 {
+		t.Errorf("saved files = %d, want 1", len(matches))
 	}
 }

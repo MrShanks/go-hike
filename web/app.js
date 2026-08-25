@@ -1,4 +1,4 @@
-const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, mapReady: false, endpointMarkers: [], photoMarkers: [] };
+const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", mapReady: false, endpointMarkers: [], photoMarkers: [] };
 const palette = ["#d7ff43", "#ff8a5b", "#55d8ff", "#f0bbff", "#72e6a1", "#ffd166"];
 const elements = {
   fileInput: document.querySelector("#file-input"),
@@ -24,17 +24,17 @@ map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "bottom-
 map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
 
 map.on("load", () => {
-  map.addSource("hikes", { type: "geojson", data: featureCollection() });
+  map.addSource("activities", { type: "geojson", data: featureCollection() });
   map.addLayer({
-    id: "hike-casing",
+    id: "activity-casing",
     type: "line",
-    source: "hikes",
+    source: "activities",
     paint: { "line-color": "#070809", "line-width": ["interpolate", ["linear"], ["zoom"], 3, 3, 12, 9], "line-opacity": 0.75 },
   });
   map.addLayer({
-    id: "hikes",
+    id: "activities",
     type: "line",
-    source: "hikes",
+    source: "activities",
     paint: {
       "line-color": ["get", "color"],
       "line-width": ["interpolate", ["linear"], ["zoom"], 3, 1.5, 12, 4.5],
@@ -45,27 +45,44 @@ map.on("load", () => {
   syncMap();
 });
 
-map.on("click", "hikes", (event) => {
+map.on("click", "activities", (event) => {
   const id = event.features?.[0]?.properties?.id;
   if (id) selectTrack(id, true);
 });
-map.on("mouseenter", "hikes", () => { map.getCanvas().style.cursor = "pointer"; });
-map.on("mouseleave", "hikes", () => { map.getCanvas().style.cursor = ""; });
+map.on("mouseenter", "activities", () => { map.getCanvas().style.cursor = "pointer"; });
+map.on("mouseleave", "activities", () => { map.getCanvas().style.cursor = ""; });
 
 function featureCollection() {
   return {
     type: "FeatureCollection",
-    features: state.tracks.map((track, index) => ({
+    features: filteredTracks().map((track) => ({
       type: "Feature",
-      properties: { id: track.id, name: track.name, color: palette[index % palette.length] },
+	  properties: { id: track.id, name: track.name, color: trackColor(track) },
       geometry: { type: "MultiLineString", coordinates: track.coordinates },
     })),
   };
 }
 
+function filteredTracks() {
+  const from = state.dateFrom ? new Date(`${state.dateFrom}T00:00:00`) : null;
+  const to = state.dateTo ? new Date(`${state.dateTo}T23:59:59.999`) : null;
+  return state.tracks.filter((track) => {
+    if (state.category && (track.activity || "Activity") !== state.category) return false;
+    if (!from && !to) return true;
+    if (!track.startedAt) return false;
+    const startedAt = new Date(track.startedAt);
+    return (!from || startedAt >= from) && (!to || startedAt <= to);
+  });
+}
+
+function trackColor(track) {
+  const index = state.tracks.findIndex((candidate) => candidate.id === track.id);
+  return palette[Math.max(index, 0) % palette.length];
+}
+
 function syncMap() {
   if (!state.mapReady) return;
-  map.getSource("hikes").setData(featureCollection());
+  map.getSource("activities").setData(featureCollection());
   syncEndpointMarkers();
   syncPhotoMarkers();
 }
@@ -104,26 +121,50 @@ function syncEndpointMarkers() {
 }
 
 function render() {
-  const totalDistance = state.tracks.reduce((sum, track) => sum + track.distanceKm, 0);
-  const totalAscent = state.tracks.reduce((sum, track) => sum + track.elevationGain, 0);
-  const totalDescent = state.tracks.reduce((sum, track) => sum + track.elevationDescent, 0);
-  document.querySelector("#hike-count").textContent = `${state.tracks.length} ${state.tracks.length === 1 ? "hike" : "hikes"}`;
+	const visibleTracks = filteredTracks();
+  const totalDistance = visibleTracks.reduce((sum, track) => sum + track.distanceKm, 0);
+  const totalAscent = visibleTracks.reduce((sum, track) => sum + track.elevationGain, 0);
+  const totalDescent = visibleTracks.reduce((sum, track) => sum + track.elevationDescent, 0);
+	const totalTime = visibleTracks.reduce((sum, track) => sum + track.duration, 0);
+  document.querySelector("#activity-count").textContent = `${visibleTracks.length} ${visibleTracks.length === 1 ? "activity" : "activities"}`;
   document.querySelector("#total-distance").textContent = formatDistance(totalDistance, false);
   document.querySelector("#total-ascent").textContent = Math.round(totalAscent).toLocaleString();
   document.querySelector("#total-descent").textContent = Math.round(totalDescent).toLocaleString();
+	document.querySelector("#total-time").textContent = formatDuration(totalTime);
   elements.emptyState.classList.toggle("hidden", state.tracks.length > 0);
 
-  if (state.tracks.length === 0) {
-    elements.trackList.innerHTML = '<div class="library-empty">Your imported hikes will appear here.</div>';
+	if (state.tracks.length === 0) {
+    elements.trackList.innerHTML = '<div class="library-empty">Your imported activities will appear here.</div>';
+	} else if (visibleTracks.length === 0) {
+	  elements.trackList.innerHTML = '<div class="library-empty">No activities match these filters.</div>';
   } else {
-    elements.trackList.innerHTML = state.tracks.map((track, index) => `
+	  elements.trackList.innerHTML = visibleTracks.map((track) => `
       <button class="track-item ${track.id === state.selectedId ? "active" : ""}" data-track-id="${track.id}" type="button">
-        <span class="track-swatch" style="background:${palette[index % palette.length]}"></span>
-        <span class="track-copy"><strong>${escapeHTML(track.name)}</strong><span>${formatDate(track.startedAt)}</span></span>
+		<span class="track-swatch" style="background:${trackColor(track)}"></span>
+		<span class="activity-icon" title="${escapeHTML(track.activity || "Activity")}"><i data-lucide="${activityIcon(track.activityType)}"></i></span>
+		<span class="track-copy"><strong>${escapeHTML(track.name)}</strong><span>${escapeHTML(track.activity || "Activity")} · ${formatDate(track.startedAt)}</span></span>
         <span class="track-distance">${formatDistance(track.distanceKm)}</span>
       </button>`).join("");
   }
+  lucide.createIcons();
   syncMap();
+}
+
+function renderCategoryOptions() {
+  const select = document.querySelector("#category-filter");
+  const categories = [...new Set(state.tracks.map((track) => track.activity || "Activity"))].sort();
+  select.innerHTML = '<option value="">All categories</option>' + categories.map((category) => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join("");
+  select.value = state.category;
+}
+
+function activityIcon(activityType = "") {
+  const type = activityType.toLowerCase();
+  if (["hiking", "hikingtourtrail", "walking", "mountaineering"].includes(type)) return "mountain";
+  if (["running", "trail_running"].includes(type)) return "footprints";
+  if (["lap_swimming", "open_water_swimming", "swimming"].includes(type)) return "waves";
+  if (["cycling", "road_cycling", "gravel_cycling"].includes(type)) return "bike";
+  if (["bouldering", "rock_climbing", "climbing"].includes(type)) return "dumbbell";
+  return "activity";
 }
 
 function selectTrack(id, focus = false) {
@@ -133,6 +174,7 @@ function selectTrack(id, focus = false) {
   state.selectedPhotoId = null;
   elements.photoPanel.classList.remove("open");
   document.querySelector("#detail-name").textContent = track.name;
+	document.querySelector("#detail-activity").textContent = (track.activity || "Activity").toUpperCase();
   document.querySelector("#detail-date").textContent = formatDate(track.startedAt).toUpperCase();
   document.querySelector("#detail-distance").textContent = formatDistance(track.distanceKm);
   document.querySelector("#detail-ascent").textContent = `${Math.round(track.elevationGain).toLocaleString()} m`;
@@ -205,10 +247,11 @@ function fitTracks(tracks = state.tracks) {
 async function loadTracks() {
   try {
     const response = await fetch("/api/tracks");
-    if (!response.ok) throw new Error("Could not load hikes");
+    if (!response.ok) throw new Error("Could not load activities");
     state.tracks = await response.json();
+  	renderCategoryOptions();
     render();
-    if (state.tracks.length) fitTracks();
+  	if (state.tracks.length) fitTracks(filteredTracks());
   } catch (error) {
     showToast(error.message);
   }
@@ -233,16 +276,22 @@ async function importFiles(fileList) {
   }
   const body = new FormData();
   files.forEach((file) => body.append("files", file));
-  showToast(`Importing ${files.length} ${files.length === 1 ? "hike" : "hikes"}…`);
+  showToast(`Importing ${files.length} ${files.length === 1 ? "activity" : "activities"}…`);
   try {
     const response = await fetch("/api/tracks", { method: "POST", body });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Import failed");
-    const importedIds = new Set(result.map((track) => track.id));
-    state.tracks = [...result, ...state.tracks.filter((track) => !importedIds.has(track.id))];
+  const importedIds = new Set(result.imported.map((track) => track.id));
+    state.tracks = [...result.imported, ...state.tracks.filter((track) => !importedIds.has(track.id))];
+  	renderCategoryOptions();
     render();
-    fitTracks(result);
-    showToast(`${result.length} ${result.length === 1 ? "hike" : "hikes"} added`);
+  if (result.imported.length) fitTracks(result.imported);
+  if (result.rejected.length) {
+    const rejected = result.rejected[0];
+    showToast(`${result.imported.length} added · ${result.rejected.length} skipped: ${rejected.name} — ${rejected.reason}`, 7000);
+  } else {
+    showToast(`${result.imported.length} ${result.imported.length === 1 ? "activity" : "activities"} added`);
+  }
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -300,7 +349,7 @@ async function deleteSelectedTrack() {
   if (!track || !window.confirm(`Delete “${track.name}”?`)) return;
   const response = await fetch(`/api/tracks/${track.id}`, { method: "DELETE" });
   if (!response.ok) {
-    showToast("Could not delete this hike");
+    showToast("Could not delete this activity");
     return;
   }
   state.tracks = state.tracks.filter((candidate) => candidate.id !== track.id);
@@ -308,7 +357,7 @@ async function deleteSelectedTrack() {
   elements.detailPanel.classList.remove("open");
   render();
   if (state.tracks.length) fitTracks();
-  showToast("Hike deleted");
+  showToast("Activity deleted");
 }
 
 function formatDistance(distance, unit = true) {
@@ -344,11 +393,11 @@ function escapeHTML(value) {
 }
 
 let toastTimer;
-function showToast(message) {
+function showToast(message, duration = 2600) {
   elements.toast.textContent = message;
   elements.toast.classList.add("visible");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), 2600);
+	toastTimer = setTimeout(() => elements.toast.classList.remove("visible"), duration);
 }
 
 document.querySelectorAll("#import-button, #import-map-button, #empty-import-button").forEach((button) => {
@@ -375,6 +424,36 @@ document.querySelector("#close-photo").addEventListener("click", () => {
   syncMap();
 });
 document.querySelector("#delete-photo").addEventListener("click", deleteSelectedPhoto);
+document.querySelector("#category-filter").addEventListener("change", (event) => {
+  state.category = event.target.value;
+  applyFilters();
+});
+document.querySelector("#date-from").addEventListener("change", (event) => {
+  state.dateFrom = event.target.value;
+  applyFilters();
+});
+document.querySelector("#date-to").addEventListener("change", (event) => {
+  state.dateTo = event.target.value;
+  applyFilters();
+});
+document.querySelector("#clear-filters").addEventListener("click", () => {
+  state.category = "";
+  state.dateFrom = "";
+  state.dateTo = "";
+  document.querySelector("#category-filter").value = "";
+  document.querySelector("#date-from").value = "";
+  document.querySelector("#date-to").value = "";
+  applyFilters();
+});
+
+function applyFilters() {
+  if (state.selectedId && !filteredTracks().some((track) => track.id === state.selectedId)) {
+    state.selectedId = null;
+    elements.detailPanel.classList.remove("open");
+  }
+  render();
+  if (filteredTracks().length) fitTracks(filteredTracks());
+}
 
 let dragDepth = 0;
 window.addEventListener("dragenter", (event) => { event.preventDefault(); dragDepth += 1; elements.dropOverlay.classList.add("visible"); });

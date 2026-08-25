@@ -4,7 +4,7 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta name="theme-color" content="#090a0c">
-	<title>Trails — Your hiking atlas</title>
+	<title>Tracks — Your activity atlas</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
@@ -17,28 +17,42 @@
 			<header class="brand">
 				<div class="brand-mark"><i data-lucide="mountain-snow"></i></div>
 				<div>
-					<strong>Trails</strong>
-					<span>Personal hiking atlas</span>
+					<strong>Tracks</strong>
+					<span>Personal activity atlas</span>
 				</div>
 			</header>
 
-			<section class="overview" aria-label="Hiking totals">
+			<section class="overview" aria-label="Activity totals">
 				<div class="overview-heading">
 					<span>YOUR JOURNEY</span>
-					<span id="hike-count">0 hikes</span>
+					<span id="activity-count">0 activities</span>
 				</div>
 				<div class="overview-stats">
 					<div><strong id="total-distance">0</strong><span>kilometers</span></div>
 					<div><strong id="total-ascent">0</strong><span>ascent</span></div>
 					<div><strong id="total-descent">0</strong><span>descent</span></div>
+					<div><strong id="total-time">—</strong><span>total time</span></div>
 				</div>
 			</section>
 
 			<div class="library-heading">
-				<span>Hike library</span>
+				<span>Activity library</span>
 				<button class="icon-button" id="import-button" type="button" aria-label="Import GPX files" title="Import GPX">
 					<i data-lucide="plus"></i>
 				</button>
+			</div>
+			<div class="library-filters" aria-label="Activity filters">
+				<label class="category-filter">
+					<i data-lucide="list-filter"></i>
+					<select id="category-filter" aria-label="Filter by activity category">
+						<option value="">All categories</option>
+					</select>
+				</label>
+				<div class="date-filters">
+					<label><span>FROM</span><input id="date-from" type="date" aria-label="Activities from date"></label>
+					<label><span>TO</span><input id="date-to" type="date" aria-label="Activities to date"></label>
+					<button class="filter-clear" id="clear-filters" type="button" aria-label="Clear activity filters" title="Clear filters"><i data-lucide="x"></i></button>
+				</div>
 			</div>
 			<div class="track-list" id="track-list"></div>
 
@@ -49,17 +63,17 @@
 		</aside>
 
 		<main class="map-region">
-			<div id="map" aria-label="Map of imported hiking tracks"></div>
+			<div id="map" aria-label="Map of imported activity tracks"></div>
 			<div class="map-topbar">
 				<div class="map-title">
 					<span>EXPLORE</span>
-					<h1>Your hiking world</h1>
+					<h1>Your activity world</h1>
 				</div>
 				<div class="map-actions">
 					<button class="glass-button" id="photo-import-button" type="button" title="Import geotagged photos">
 						<i data-lucide="camera"></i><span>Photos</span>
 					</button>
-					<button class="glass-button" id="fit-button" type="button" title="Show all hikes">
+					<button class="glass-button" id="fit-button" type="button" title="Show all activities">
 						<i data-lucide="scan"></i><span>View all</span>
 					</button>
 					<button class="primary-button" id="import-map-button" type="button">
@@ -71,8 +85,8 @@
 			<section class="empty-state" id="empty-state">
 				<div class="empty-icon"><i data-lucide="route"></i></div>
 				<span>YOUR MAP AWAITS</span>
-				<h2>Every trail tells a story.</h2>
-				<p>Import your GPX tracks and watch your hiking world come to life.</p>
+				<h2>Every activity tells a story.</h2>
+				<p>Import your GPX tracks and watch your activity world come to life.</p>
 				<button class="primary-button large" id="empty-import-button" type="button">
 					<i data-lucide="upload"></i><span>Choose GPX files</span>
 				</button>
@@ -83,8 +97,8 @@
 				<div class="detail-handle"></div>
 				<div class="detail-header">
 					<div>
-						<span id="detail-date">HIKE</span>
-						<h2 id="detail-name">Trail name</h2>
+						<div class="detail-kicker"><span id="detail-activity">ACTIVITY</span><span id="detail-date">DATE UNKNOWN</span></div>
+						<h2 id="detail-name">Activity name</h2>
 					</div>
 					<button class="icon-button" id="close-detail" type="button" aria-label="Close details"><i data-lucide="x"></i></button>
 				</div>
@@ -107,7 +121,7 @@
 				</div>
 				<div class="detail-actions">
 					<button class="secondary-button" id="focus-track" type="button"><i data-lucide="locate-fixed"></i>Focus track</button>
-					<button class="danger-button" id="delete-track" type="button" aria-label="Delete hike" title="Delete hike"><i data-lucide="trash-2"></i></button>
+					<button class="danger-button" id="delete-track" type="button" aria-label="Delete activity" title="Delete activity"><i data-lucide="trash-2"></i></button>
 				</div>
 			</section>
 
@@ -115,7 +129,7 @@
 				<div class="detail-handle"></div>
 				<img id="photo-preview" alt="">
 				<div class="photo-copy">
-					<div><span>TRAIL PHOTO</span><strong id="photo-name">Photo</strong><small id="photo-date">Date unknown</small></div>
+					<div><span>ACTIVITY PHOTO</span><strong id="photo-name">Photo</strong><small id="photo-date">Date unknown</small></div>
 					<div class="photo-actions">
 						<button class="icon-button" id="close-photo" type="button" aria-label="Close photo"><i data-lucide="x"></i></button>
 						<button class="danger-button" id="delete-photo" type="button" aria-label="Delete photo" title="Delete photo"><i data-lucide="trash-2"></i></button>

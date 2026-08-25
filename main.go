@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"image/jpeg"
 	"io"
 	"io/fs"
@@ -35,6 +34,7 @@ type gpxDocument struct {
 
 type gpxTrack struct {
 	Name     string       `xml:"name"`
+	Type     string       `xml:"type"`
 	Segments []gpxSegment `xml:"trkseg"`
 }
 
@@ -63,6 +63,8 @@ type trackEndpoint struct {
 type track struct {
 	ID               string           `json:"id"`
 	Name             string           `json:"name"`
+	Activity         string           `json:"activity"`
+	ActivityType     string           `json:"activityType"`
 	FileName         string           `json:"fileName"`
 	DistanceKM       float64          `json:"distanceKm"`
 	ElevationGain    float64          `json:"elevationGain"`
@@ -97,6 +99,16 @@ type photoRejection struct {
 	Reason string `json:"reason"`
 }
 
+type trackImportResult struct {
+	Imported []track          `json:"imported"`
+	Rejected []trackRejection `json:"rejected"`
+}
+
+type trackRejection struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
 type server struct {
 	dataDir string
 	static  fs.FS
@@ -114,7 +126,7 @@ func main() {
 	}
 
 	address := ":8080"
-	log.Printf("Go Hike is running at http://localhost%s", address)
+	log.Printf("Tracks is running at http://localhost%s", address)
 	log.Fatal(http.ListenAndServe(address, app.routes()))
 }
 
@@ -320,7 +332,7 @@ func validCoordinates(latitude, longitude float64) bool {
 func (s *server) listTracks(w http.ResponseWriter, _ *http.Request) {
 	tracks, err := s.loadTracks()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Could not load your hikes")
+		writeError(w, http.StatusInternalServerError, "Could not load your activities")
 		return
 	}
 	writeJSON(w, http.StatusOK, tracks)
@@ -339,21 +351,23 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imported := make([]track, 0, len(files))
+	result := trackImportResult{Imported: make([]track, 0, len(files)), Rejected: make([]trackRejection, 0)}
 	for _, header := range files {
 		parsed, contents, err := readUploadedTrack(header)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("%s: %v", header.Filename, err))
-			return
+			log.Printf("activity %q rejected: %v", header.Filename, err)
+			result.Rejected = append(result.Rejected, trackRejection{Name: header.Filename, Reason: err.Error()})
+			continue
 		}
 		if err := os.WriteFile(filepath.Join(s.dataDir, parsed.ID+".gpx"), contents, 0o644); err != nil {
-			writeError(w, http.StatusInternalServerError, "Could not save your hike")
+			log.Printf("could not save activity %q: %v", header.Filename, err)
+			writeError(w, http.StatusInternalServerError, "Could not save your activity")
 			return
 		}
-		imported = append(imported, parsed)
+		result.Imported = append(result.Imported, parsed)
 	}
 
-	writeJSON(w, http.StatusCreated, imported)
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
@@ -364,10 +378,10 @@ func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := os.Remove(filepath.Join(s.dataDir, id+".gpx")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			writeError(w, http.StatusNotFound, "Hike not found")
+			writeError(w, http.StatusNotFound, "Activity not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "Could not delete your hike")
+		writeError(w, http.StatusInternalServerError, "Could not delete your activity")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -434,6 +448,8 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 	result := track{
 		ID:               hex.EncodeToString(hash[:8]),
 		Name:             strings.TrimSpace(document.Tracks[0].Name),
+		Activity:         activityName(document.Tracks[0].Type),
+		ActivityType:     normalizeActivityType(document.Tracks[0].Type),
 		FileName:         filepath.Base(fileName),
 		ElevationProfile: make([]elevationPoint, 0),
 		Coordinates:      make([][][]float64, 0),
@@ -498,7 +514,7 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 		}
 	}
 	if len(result.Coordinates) == 0 {
-		return track{}, errors.New("track needs at least two points")
+		return track{}, errors.New("activity has no mappable GPS track points")
 	}
 	result.Start = endpointFromPoint(firstPoint, "Start")
 	result.End = endpointFromPoint(lastPoint, "Finish")
@@ -509,6 +525,35 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 		}
 	}
 	return result, nil
+}
+
+func normalizeActivityType(activityType string) string {
+	return strings.ToLower(strings.TrimSpace(activityType))
+}
+
+func activityName(activityType string) string {
+	switch normalizeActivityType(activityType) {
+	case "hiking", "hikingtourtrail", "walking", "mountaineering":
+		return "Hiking"
+	case "running", "trail_running":
+		return "Running"
+	case "lap_swimming", "open_water_swimming", "swimming":
+		return "Swimming"
+	case "cycling", "road_cycling":
+		return "Cycling"
+	case "gravel_cycling":
+		return "Gravel cycling"
+	case "bouldering", "rock_climbing", "climbing":
+		return "Bouldering"
+	case "":
+		return "Activity"
+	default:
+		words := strings.Fields(strings.ReplaceAll(normalizeActivityType(activityType), "_", " "))
+		for index := range words {
+			words[index] = strings.ToUpper(words[index][:1]) + words[index][1:]
+		}
+		return strings.Join(words, " ")
+	}
 }
 
 func endpointFromPoint(point *gpxPoint, fallbackName string) trackEndpoint {
