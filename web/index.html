@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="theme-color" content="#090a0c">
+	<title>Trails — Your hiking atlas</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+	<link href="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css" rel="stylesheet">
+	<link href="/styles.css" rel="stylesheet">
+</head>
+<body>
+	<div class="app-shell">
+		<aside class="sidebar">
+			<header class="brand">
+				<div class="brand-mark"><i data-lucide="mountain-snow"></i></div>
+				<div>
+					<strong>Trails</strong>
+					<span>Personal hiking atlas</span>
+				</div>
+			</header>
+
+			<section class="overview" aria-label="Hiking totals">
+				<div class="overview-heading">
+					<span>YOUR JOURNEY</span>
+					<span id="hike-count">0 hikes</span>
+				</div>
+				<div class="overview-stats">
+					<div><strong id="total-distance">0</strong><span>kilometers</span></div>
+					<div><strong id="total-ascent">0</strong><span>ascent</span></div>
+					<div><strong id="total-descent">0</strong><span>descent</span></div>
+				</div>
+			</section>
+
+			<div class="library-heading">
+				<span>Hike library</span>
+				<button class="icon-button" id="import-button" type="button" aria-label="Import GPX files" title="Import GPX">
+					<i data-lucide="plus"></i>
+				</button>
+			</div>
+			<div class="track-list" id="track-list"></div>
+
+			<footer class="privacy-note">
+				<i data-lucide="shield-check"></i>
+				<span>Your GPX files stay on this server.</span>
+			</footer>
+		</aside>
+
+		<main class="map-region">
+			<div id="map" aria-label="Map of imported hiking tracks"></div>
+			<div class="map-topbar">
+				<div class="map-title">
+					<span>EXPLORE</span>
+					<h1>Your hiking world</h1>
+				</div>
+				<div class="map-actions">
+					<button class="glass-button" id="photo-import-button" type="button" title="Import geotagged photos">
+						<i data-lucide="camera"></i><span>Photos</span>
+					</button>
+					<button class="glass-button" id="fit-button" type="button" title="Show all hikes">
+						<i data-lucide="scan"></i><span>View all</span>
+					</button>
+					<button class="primary-button" id="import-map-button" type="button">
+						<i data-lucide="upload"></i><span>Import GPX</span>
+					</button>
+				</div>
+			</div>
+
+			<section class="empty-state" id="empty-state">
+				<div class="empty-icon"><i data-lucide="route"></i></div>
+				<span>YOUR MAP AWAITS</span>
+				<h2>Every trail tells a story.</h2>
+				<p>Import your GPX tracks and watch your hiking world come to life.</p>
+				<button class="primary-button large" id="empty-import-button" type="button">
+					<i data-lucide="upload"></i><span>Choose GPX files</span>
+				</button>
+				<small>or drop files anywhere on the map</small>
+			</section>
+
+			<section class="detail-panel" id="detail-panel" aria-live="polite">
+				<div class="detail-handle"></div>
+				<div class="detail-header">
+					<div>
+						<span id="detail-date">HIKE</span>
+						<h2 id="detail-name">Trail name</h2>
+					</div>
+					<button class="icon-button" id="close-detail" type="button" aria-label="Close details"><i data-lucide="x"></i></button>
+				</div>
+				<div class="detail-stats">
+					<div><i data-lucide="route"></i><strong id="detail-distance">0 km</strong><span>Distance</span></div>
+					<div><i data-lucide="mountain"></i><strong id="detail-ascent">0 m</strong><span>Elevation gain</span></div>
+					<div><i data-lucide="trending-down"></i><strong id="detail-descent">0 m</strong><span>Descent</span></div>
+					<div><i data-lucide="arrow-up-to-line"></i><strong id="detail-highest">—</strong><span>Highest point</span></div>
+					<div><i data-lucide="arrow-down-to-line"></i><strong id="detail-lowest">—</strong><span>Lowest point</span></div>
+					<div><i data-lucide="clock-3"></i><strong id="detail-duration">—</strong><span>Moving time</span></div>
+				</div>
+				<div class="endpoint-list">
+					<div><span class="endpoint-dot start"></span><span><small>START</small><strong id="detail-start">Start</strong></span></div>
+					<i data-lucide="arrow-right"></i>
+					<div><span class="endpoint-dot finish"></span><span><small>FINISH</small><strong id="detail-end">Finish</strong></span></div>
+				</div>
+				<div class="elevation-section">
+					<div class="elevation-heading"><span>ELEVATION PROFILE</span><span id="profile-range"></span></div>
+					<div class="elevation-chart" id="elevation-chart"></div>
+				</div>
+				<div class="detail-actions">
+					<button class="secondary-button" id="focus-track" type="button"><i data-lucide="locate-fixed"></i>Focus track</button>
+					<button class="danger-button" id="delete-track" type="button" aria-label="Delete hike" title="Delete hike"><i data-lucide="trash-2"></i></button>
+				</div>
+			</section>
+
+			<section class="photo-panel" id="photo-panel" aria-live="polite">
+				<div class="detail-handle"></div>
+				<img id="photo-preview" alt="">
+				<div class="photo-copy">
+					<div><span>TRAIL PHOTO</span><strong id="photo-name">Photo</strong><small id="photo-date">Date unknown</small></div>
+					<div class="photo-actions">
+						<button class="icon-button" id="close-photo" type="button" aria-label="Close photo"><i data-lucide="x"></i></button>
+						<button class="danger-button" id="delete-photo" type="button" aria-label="Delete photo" title="Delete photo"><i data-lucide="trash-2"></i></button>
+					</div>
+				</div>
+			</section>
+
+			<div class="drop-overlay" id="drop-overlay">
+				<i data-lucide="file-up"></i><strong>Drop GPX files or geotagged photos</strong>
+			</div>
+			<div class="toast" id="toast" role="status"></div>
+		</main>
+	</div>
+	<input id="file-input" type="file" accept=".gpx,application/gpx+xml" multiple hidden>
+	<input id="photo-input" type="file" accept=".jpg,.jpeg,image/jpeg" multiple hidden>
+	<script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
+	<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+	<script src="/app.js"></script>
+</body>
+</html>
