@@ -462,7 +462,7 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 	var firstPoint, lastPoint *gpxPoint
 	for _, sourceTrack := range document.Tracks {
 		for _, segment := range sourceTrack.Segments {
-			if len(segment.Points) < 2 {
+			if len(segment.Points) == 0 {
 				continue
 			}
 			coordinates := make([][]float64, 0, len(segment.Points))

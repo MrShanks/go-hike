@@ -60,8 +60,21 @@ func TestParseGPXCalculatesTrackDetails(t *testing.T) {
 	}
 }
 
-func TestParseGPXRejectsEmptyTrack(t *testing.T) {
-	_, err := parseGPX([]byte(`<gpx><trk><trkseg><trkpt lat="46" lon="7" /></trkseg></trk></gpx>`), "empty.gpx")
+func TestParseGPXAcceptsStationaryActivity(t *testing.T) {
+	result, err := parseGPX([]byte(`<gpx><trk><name>Gym session</name><type>bouldering</type><trkseg><trkpt lat="46" lon="7"><time>2026-08-20T08:00:00Z</time></trkpt></trkseg></trk></gpx>`), "gym.gpx")
+	if err != nil {
+		t.Fatalf("parseGPX() error = %v", err)
+	}
+	if result.DistanceKM != 0 || len(result.Coordinates) != 1 || len(result.Coordinates[0]) != 1 {
+		t.Errorf("stationary activity = %#v, want one point and zero distance", result)
+	}
+	if result.Start.Coordinates[0] != 7 || result.Start.Coordinates[1] != 46 {
+		t.Errorf("location = %#v, want [7, 46]", result.Start.Coordinates)
+	}
+}
+
+func TestParseGPXRejectsTrackWithoutPoints(t *testing.T) {
+	_, err := parseGPX([]byte(`<gpx><trk><trkseg></trkseg></trk></gpx>`), "empty.gpx")
 	if err == nil {
 		t.Fatal("parseGPX() expected an error")
 	}

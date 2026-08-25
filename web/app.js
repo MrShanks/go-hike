@@ -1,4 +1,4 @@
-const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", mapReady: false, endpointMarkers: [], photoMarkers: [] };
+const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
 const palette = ["#d7ff43", "#ff8a5b", "#55d8ff", "#f0bbff", "#72e6a1", "#ffd166"];
 const elements = {
   fileInput: document.querySelector("#file-input"),
@@ -55,7 +55,7 @@ map.on("mouseleave", "activities", () => { map.getCanvas().style.cursor = ""; })
 function featureCollection() {
   return {
     type: "FeatureCollection",
-    features: filteredTracks().map((track) => ({
+    features: filteredTracks().filter((track) => !isStationary(track)).map((track) => ({
       type: "Feature",
 	  properties: { id: track.id, name: track.name, color: trackColor(track) },
       geometry: { type: "MultiLineString", coordinates: track.coordinates },
@@ -80,11 +80,36 @@ function trackColor(track) {
   return palette[Math.max(index, 0) % palette.length];
 }
 
+function isStationary(track) {
+  return track.coordinates.flat().length === 1;
+}
+
 function syncMap() {
   if (!state.mapReady) return;
   map.getSource("activities").setData(featureCollection());
+  syncActivityMarkers();
   syncEndpointMarkers();
   syncPhotoMarkers();
+}
+
+function syncActivityMarkers() {
+  state.activityMarkers.forEach((marker) => marker.remove());
+  state.activityMarkers = [];
+  filteredTracks().filter(isStationary).forEach((track) => {
+    const element = document.createElement("button");
+    element.className = `stationary-marker ${track.id === state.selectedId ? "active" : ""}`;
+    element.type = "button";
+    element.title = `${track.activity || "Activity"}: ${track.name}`;
+    element.style.setProperty("--marker-color", trackColor(track));
+    element.innerHTML = `<i data-lucide="${activityIcon(track.activityType)}"></i>`;
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectTrack(track.id, true);
+    });
+    const marker = new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(track.coordinates[0][0]).addTo(map);
+    state.activityMarkers.push(marker);
+  });
+  lucide.createIcons();
 }
 
 function syncPhotoMarkers() {
@@ -109,7 +134,7 @@ function syncEndpointMarkers() {
   state.endpointMarkers.forEach((marker) => marker.remove());
   state.endpointMarkers = [];
   const track = state.tracks.find((candidate) => candidate.id === state.selectedId);
-  if (!track?.start?.coordinates || !track?.end?.coordinates) return;
+  if (!track?.start?.coordinates || !track?.end?.coordinates || isStationary(track)) return;
   [{ endpoint: track.start, label: "S", className: "" }, { endpoint: track.end, label: "F", className: "finish" }].forEach((item) => {
     const element = document.createElement("div");
     element.className = `endpoint-marker ${item.className}`;

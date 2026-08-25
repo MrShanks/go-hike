@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+Dockerfile*
+compose*.yml
+README.md
+activities
+data
+*.test

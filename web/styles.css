@@ -130,6 +130,9 @@ button { color: inherit; }
 .detail-actions { display: flex; justify-content: space-between; }
 .endpoint-marker { display: grid; min-width: 24px; height: 24px; padding: 0 6px; place-items: center; color: #0b0d0e; border: 2px solid #0b0d0e; border-radius: 12px; background: var(--accent); box-shadow: 0 3px 14px rgba(0, 0, 0, .55); font-size: 8px; font-weight: 700; }
 .endpoint-marker.finish { color: #fff; background: #ff704c; }
+.stationary-marker { display: grid; width: 34px; height: 42px; padding: 0 0 8px; place-items: center; color: #101214; border: 2px solid #08090a; border-radius: 17px 17px 17px 3px; background: var(--marker-color); box-shadow: 0 5px 18px rgba(0, 0, 0, .55); cursor: pointer; transform: rotate(-45deg); transition: filter 160ms ease, scale 160ms ease; }
+.stationary-marker svg { width: 16px; height: 16px; stroke-width: 2.5; transform: rotate(45deg); }
+.stationary-marker:hover, .stationary-marker.active { filter: brightness(1.15); scale: 1.14; }
 .photo-marker { width: 44px; height: 44px; padding: 0; border: 2px solid #fff; border-radius: 50%; background-color: #24282d; background-position: center; background-size: cover; box-shadow: 0 5px 18px rgba(0, 0, 0, .55); cursor: pointer; transition: width 160ms ease, height 160ms ease, border-color 160ms ease; }
 .photo-marker:hover, .photo-marker.active { width: 52px; height: 52px; border-color: var(--accent); }
 .photo-panel { position: absolute; z-index: 6; right: 20px; bottom: 20px; width: min(360px, calc(100% - 40px)); overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: rgba(15, 17, 20, .96); box-shadow: 0 24px 70px rgba(0, 0, 0, .5); opacity: 0; pointer-events: none; transform: translateY(20px); transition: opacity 180ms ease, transform 180ms ease; }
