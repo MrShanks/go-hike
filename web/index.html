@@ -37,7 +37,7 @@
 
 			<div class="library-heading">
 				<span>Activity library</span>
-				<button class="icon-button" id="import-button" type="button" aria-label="Import GPX files" title="Import GPX">
+				<button class="icon-button" id="import-button" type="button" aria-label="Import activity files" title="Import activity">
 					<i data-lucide="plus"></i>
 				</button>
 			</div>
@@ -58,7 +58,7 @@
 
 			<footer class="privacy-note">
 				<i data-lucide="shield-check"></i>
-				<span>Your GPX files stay on this server.</span>
+				<span>Your activity files stay on this server.</span>
 			</footer>
 		</aside>
 
@@ -77,7 +77,7 @@
 						<i data-lucide="scan"></i><span>View all</span>
 					</button>
 					<button class="primary-button" id="import-map-button" type="button">
-						<i data-lucide="upload"></i><span>Import GPX</span>
+						<i data-lucide="upload"></i><span>Import activity</span>
 					</button>
 				</div>
 			</div>
@@ -86,9 +86,9 @@
 				<div class="empty-icon"><i data-lucide="route"></i></div>
 				<span>YOUR MAP AWAITS</span>
 				<h2>Every activity tells a story.</h2>
-				<p>Import your GPX tracks and watch your activity world come to life.</p>
+				<p>Import GPX or FIT tracks and watch your activity world come to life.</p>
 				<button class="primary-button large" id="empty-import-button" type="button">
-					<i data-lucide="upload"></i><span>Choose GPX files</span>
+					<i data-lucide="upload"></i><span>Choose GPX or FIT files</span>
 				</button>
 				<small>or drop files anywhere on the map</small>
 			</section>
@@ -138,12 +138,12 @@
 			</section>
 
 			<div class="drop-overlay" id="drop-overlay">
-				<i data-lucide="file-up"></i><strong>Drop GPX files or geotagged photos</strong>
+				<i data-lucide="file-up"></i><strong>Drop GPX, FIT, or geotagged photos</strong>
 			</div>
 			<div class="toast" id="toast" role="status"></div>
 		</main>
 	</div>
-	<input id="file-input" type="file" accept=".gpx,application/gpx+xml" multiple hidden>
+	<input id="file-input" type="file" accept=".gpx,.fit,application/gpx+xml,application/vnd.ant.fit" multiple hidden>
 	<input id="photo-input" type="file" accept=".jpg,.jpeg,image/jpeg" multiple hidden>
 	<script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
 	<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>

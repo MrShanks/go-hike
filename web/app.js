@@ -294,9 +294,9 @@ async function loadPhotos() {
 }
 
 async function importFiles(fileList) {
-  const files = [...fileList].filter((file) => file.name.toLowerCase().endsWith(".gpx"));
+  const files = [...fileList].filter((file) => /\.(gpx|fit)$/i.test(file.name));
   if (!files.length) {
-    showToast("Choose one or more GPX files");
+    showToast("Choose one or more GPX or FIT files");
     return;
   }
   const body = new FormData();
@@ -489,11 +489,11 @@ window.addEventListener("drop", (event) => {
   dragDepth = 0;
   elements.dropOverlay.classList.remove("visible");
   const files = [...event.dataTransfer.files];
-  const gpxFiles = files.filter((file) => file.name.toLowerCase().endsWith(".gpx"));
+  const trackFiles = files.filter((file) => /\.(gpx|fit)$/i.test(file.name));
   const photoFiles = files.filter((file) => /\.jpe?g$/i.test(file.name) || file.type === "image/jpeg");
-  if (gpxFiles.length) importFiles(gpxFiles);
+  if (trackFiles.length) importFiles(trackFiles);
   if (photoFiles.length) importPhotos(photoFiles);
-  if (!gpxFiles.length && !photoFiles.length) showToast("Choose GPX or JPEG files");
+  if (!trackFiles.length && !photoFiles.length) showToast("Choose GPX, FIT, or JPEG files");
 });
 
 loadTracks();

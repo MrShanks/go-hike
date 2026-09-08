@@ -1,6 +1,6 @@
 # Tracks
 
-A private activity atlas built with Go and MapLibre. Import GPX files for hiking, running, cycling, swimming, and other activities; see every mappable route on a dark interactive map; and click a track for distance, elevation, date, and duration. Geotagged JPEG photos can also be imported and viewed at their GPS location; photos without embedded GPS information are skipped.
+A private activity atlas built with Go and MapLibre. Import GPX or FIT files for hiking, running, cycling, swimming, and other activities; FIT activities are converted to GPX automatically. See every mappable route on a dark interactive map and click a track for distance, elevation, date, and duration. Geotagged JPEG photos can also be imported and viewed at their GPS location; photos without embedded GPS information are skipped.
 
 ## Run
 

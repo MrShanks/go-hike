@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/rwcarlsen/goexif/exif"
+	fitdecoder "github.com/tormoder/fit"
 )
 
 const (
@@ -352,14 +353,14 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		log.Printf("track upload failed: could not parse multipart form: %v", err)
-		writeError(w, http.StatusBadRequest, "Upload GPX files up to 25 MB")
+		writeError(w, http.StatusBadRequest, "Upload GPX or FIT files up to 25 MB")
 		return
 	}
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
 		log.Printf("track upload failed: multipart form contains no files field; fields=%v", multipartFieldNames(r.MultipartForm.File))
-		writeError(w, http.StatusBadRequest, "Choose at least one GPX file")
+		writeError(w, http.StatusBadRequest, "Choose at least one GPX or FIT file")
 		return
 	}
 	log.Printf("track upload parsed: files=%d", len(files))
@@ -445,9 +446,6 @@ func (s *server) loadTracks() ([]track, error) {
 }
 
 func readUploadedTrack(header *multipart.FileHeader) (track, []byte, error) {
-	if !strings.EqualFold(filepath.Ext(header.Filename), ".gpx") {
-		return track{}, nil, errors.New("only .gpx files are supported")
-	}
 	file, err := header.Open()
 	if err != nil {
 		return track{}, nil, err
@@ -457,8 +455,78 @@ func readUploadedTrack(header *multipart.FileHeader) (track, []byte, error) {
 	if err != nil {
 		return track{}, nil, err
 	}
+	switch strings.ToLower(filepath.Ext(header.Filename)) {
+	case ".gpx":
+	case ".fit":
+		contents, err = fitToGPX(contents, header.Filename)
+		if err != nil {
+			return track{}, nil, err
+		}
+	default:
+		return track{}, nil, errors.New("only .gpx and .fit files are supported")
+	}
 	parsed, err := parseGPX(contents, header.Filename)
 	return parsed, contents, err
+}
+
+func fitToGPX(contents []byte, fileName string) ([]byte, error) {
+	fitFile, err := fitdecoder.Decode(bytes.NewReader(contents))
+	if err != nil {
+		return nil, errors.New("invalid FIT document")
+	}
+	activity, err := fitFile.Activity()
+	if err != nil || activity == nil {
+		return nil, errors.New("FIT file does not contain an activity")
+	}
+
+	segment := gpxSegment{Points: make([]gpxPoint, 0, len(activity.Records))}
+	for _, record := range activity.Records {
+		if record == nil || record.PositionLat.Invalid() || record.PositionLong.Invalid() {
+			continue
+		}
+		point := gpxPoint{
+			Latitude:  record.PositionLat.Degrees(),
+			Longitude: record.PositionLong.Degrees(),
+		}
+		if !record.Timestamp.IsZero() {
+			point.Time = record.Timestamp
+		}
+		if record.EnhancedAltitude != ^uint32(0) {
+			elevation := float64(record.EnhancedAltitude)/1000 - 500
+			point.Elevation = &elevation
+		} else if record.Altitude != ^uint16(0) {
+			elevation := float64(record.Altitude)/5 - 500
+			point.Elevation = &elevation
+		}
+		segment.Points = append(segment.Points, point)
+	}
+	if len(segment.Points) == 0 {
+		return nil, errors.New("FIT activity has no mappable GPS track points")
+	}
+
+	activityType := ""
+	if len(activity.Sessions) > 0 && activity.Sessions[0] != nil {
+		activityType = strings.ToLower(activity.Sessions[0].Sport.String())
+	}
+	document := struct {
+		XMLName xml.Name   `xml:"gpx"`
+		Version string     `xml:"version,attr"`
+		Creator string     `xml:"creator,attr"`
+		Tracks  []gpxTrack `xml:"trk"`
+	}{
+		Version: "1.1",
+		Creator: "Tracks",
+		Tracks: []gpxTrack{{
+			Name:     strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName)),
+			Type:     activityType,
+			Segments: []gpxSegment{segment},
+		}},
+	}
+	converted, err := xml.Marshal(document)
+	if err != nil {
+		return nil, errors.New("could not convert FIT activity to GPX")
+	}
+	return append([]byte(xml.Header), converted...), nil
 }
 
 func parseGPX(contents []byte, fileName string) (track, error) {

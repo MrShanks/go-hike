@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -10,8 +11,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	fitdecoder "github.com/tormoder/fit"
 )
 
 func TestParseGPXCalculatesTrackDetails(t *testing.T) {
@@ -184,5 +190,72 @@ func TestImportTracksKeepsValidFilesWhenAnotherIsRejected(t *testing.T) {
 	}
 	if matches, _ := filepath.Glob(filepath.Join(app.dataDir, "*.gpx")); len(matches) != 1 {
 		t.Errorf("saved files = %d, want 1", len(matches))
+	}
+}
+
+func TestImportFITConvertsAndSavesGPX(t *testing.T) {
+	header := fitdecoder.NewHeader(fitdecoder.V20, false)
+	fitFile, err := fitdecoder.NewFile(fitdecoder.FileTypeActivity, header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activity, err := fitFile.Activity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := fitdecoder.NewSessionMsg()
+	session.Sport = fitdecoder.SportRunning
+	activity.Sessions = append(activity.Sessions, session)
+	for index, coordinates := range [][2]float64{{46, 7}, {46.01, 7.01}} {
+		record := fitdecoder.NewRecordMsg()
+		record.Timestamp = time.Date(2026, 8, 20, 8, index*30, 0, 0, time.UTC)
+		record.PositionLat = fitdecoder.NewLatitudeDegrees(coordinates[0])
+		record.PositionLong = fitdecoder.NewLongitudeDegrees(coordinates[1])
+		activity.Records = append(activity.Records, record)
+	}
+
+	fitContents := new(bytes.Buffer)
+	if err := fitdecoder.Encode(fitContents, fitFile, binary.LittleEndian); err != nil {
+		t.Fatal(err)
+	}
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("files", "morning-run.fit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(fitContents.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tracks", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app := &server{dataDir: t.TempDir()}
+	app.importTracks(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	var result trackImportResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Imported) != 1 || result.Imported[0].Activity != "Running" || result.Imported[0].FileName != "morning-run.fit" {
+		t.Fatalf("Imported = %#v, want one converted running activity", result.Imported)
+	}
+	matches, err := filepath.Glob(filepath.Join(app.dataDir, "*.gpx"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("saved GPX files = %v, error = %v", matches, err)
+	}
+	converted, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(converted), "<gpx") || strings.Contains(string(converted), ".FIT") {
+		t.Errorf("saved file is not converted GPX: %q", converted)
 	}
 }
