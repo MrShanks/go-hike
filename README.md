@@ -20,9 +20,16 @@ docker compose up --build -d
 
 Open [http://localhost:8080](http://localhost:8080). The Compose configuration mounts the repository's `data/` directory into the container, so imports remain available after the container is restarted or replaced.
 
+If port 8080 is already in use, select another host port and open that port instead:
+
+```sh
+TRACKS_PORT=18080 docker compose up --build -d
+```
+
 View logs or stop the application with:
 
 ```sh
+docker compose ps
 docker compose logs -f
 docker compose down
 ```

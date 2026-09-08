@@ -153,32 +153,40 @@ func (s *server) listPhotos(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *server) importPhotos(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
+	log.Printf("photo upload started: remote=%q content_length=%d content_type=%q data_dir=%q", r.RemoteAddr, r.ContentLength, r.Header.Get("Content-Type"), s.dataDir)
 	r.Body = http.MaxBytesReader(w, r.Body, maxPhotoBatch)
 	if err := r.ParseMultipartForm(maxPhotoBatch); err != nil {
+		log.Printf("photo upload failed: could not parse multipart form: %v", err)
 		writeError(w, http.StatusBadRequest, "Upload photos up to 100 MB per batch")
 		return
 	}
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
+		log.Printf("photo upload failed: multipart form contains no files field; fields=%v", multipartFieldNames(r.MultipartForm.File))
 		writeError(w, http.StatusBadRequest, "Choose at least one photo")
 		return
 	}
+	log.Printf("photo upload parsed: files=%d", len(files))
 
 	result := photoImportResult{Imported: make([]photo, 0), Rejected: make([]photoRejection, 0)}
 	for _, header := range files {
+		log.Printf("photo upload processing: name=%q size=%d", header.Filename, header.Size)
 		parsed, contents, err := readUploadedPhoto(header)
 		if err != nil {
-			log.Printf("photo %q rejected: %v", header.Filename, err)
+			log.Printf("photo upload rejected: name=%q size=%d error=%v", header.Filename, header.Size, err)
 			result.Rejected = append(result.Rejected, photoRejection{Name: header.Filename, Reason: err.Error()})
 			continue
 		}
 		if err := s.savePhoto(parsed, contents); err != nil {
-			log.Printf("could not save photo %q: %v", header.Filename, err)
+			log.Printf("photo upload failed: name=%q id=%q size=%d data_dir=%q error=%v", header.Filename, parsed.ID, len(contents), s.dataDir, err)
 			writeError(w, http.StatusInternalServerError, "Could not save your photos")
 			return
 		}
+		log.Printf("photo upload saved: name=%q id=%q size=%d", header.Filename, parsed.ID, len(contents))
 		result.Imported = append(result.Imported, parsed)
 	}
+	log.Printf("photo upload completed: imported=%d rejected=%d duration=%s", len(result.Imported), len(result.Rejected), time.Since(startedAt))
 	writeJSON(w, http.StatusCreated, result)
 }
 
@@ -339,35 +347,53 @@ func (s *server) listTracks(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
+	log.Printf("track upload started: remote=%q content_length=%d content_type=%q data_dir=%q", r.RemoteAddr, r.ContentLength, r.Header.Get("Content-Type"), s.dataDir)
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		log.Printf("track upload failed: could not parse multipart form: %v", err)
 		writeError(w, http.StatusBadRequest, "Upload GPX files up to 25 MB")
 		return
 	}
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
+		log.Printf("track upload failed: multipart form contains no files field; fields=%v", multipartFieldNames(r.MultipartForm.File))
 		writeError(w, http.StatusBadRequest, "Choose at least one GPX file")
 		return
 	}
+	log.Printf("track upload parsed: files=%d", len(files))
 
 	result := trackImportResult{Imported: make([]track, 0, len(files)), Rejected: make([]trackRejection, 0)}
 	for _, header := range files {
+		log.Printf("track upload processing: name=%q size=%d", header.Filename, header.Size)
 		parsed, contents, err := readUploadedTrack(header)
 		if err != nil {
-			log.Printf("activity %q rejected: %v", header.Filename, err)
+			log.Printf("track upload rejected: name=%q size=%d error=%v", header.Filename, header.Size, err)
 			result.Rejected = append(result.Rejected, trackRejection{Name: header.Filename, Reason: err.Error()})
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(s.dataDir, parsed.ID+".gpx"), contents, 0o644); err != nil {
-			log.Printf("could not save activity %q: %v", header.Filename, err)
+		destination := filepath.Join(s.dataDir, parsed.ID+".gpx")
+		if err := os.WriteFile(destination, contents, 0o644); err != nil {
+			log.Printf("track upload failed: name=%q id=%q size=%d destination=%q error=%v", header.Filename, parsed.ID, len(contents), destination, err)
 			writeError(w, http.StatusInternalServerError, "Could not save your activity")
 			return
 		}
+		log.Printf("track upload saved: name=%q id=%q size=%d destination=%q", header.Filename, parsed.ID, len(contents), destination)
 		result.Imported = append(result.Imported, parsed)
 	}
 
+	log.Printf("track upload completed: imported=%d rejected=%d duration=%s", len(result.Imported), len(result.Rejected), time.Since(startedAt))
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func multipartFieldNames(files map[string][]*multipart.FileHeader) []string {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
