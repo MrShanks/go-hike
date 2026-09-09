@@ -1,4 +1,4 @@
-const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
+const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", sortBy: "startedAt", sortDirection: "desc", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
 const palette = ["#d7ff43", "#ff8a5b", "#55d8ff", "#f0bbff", "#72e6a1", "#ffd166"];
 const elements = {
   fileInput: document.querySelector("#file-input"),
@@ -75,6 +75,26 @@ function filteredTracks() {
   });
 }
 
+function sortedTracks(tracks) {
+  const direction = state.sortDirection === "asc" ? 1 : -1;
+  return [...tracks].sort((first, second) => {
+    const firstValue = sortValue(first, state.sortBy);
+    const secondValue = sortValue(second, state.sortBy);
+    const firstMissing = firstValue == null || firstValue === "" || Number.isNaN(firstValue);
+    const secondMissing = secondValue == null || secondValue === "" || Number.isNaN(secondValue);
+    if (firstMissing !== secondMissing) return firstMissing ? 1 : -1;
+    if (firstMissing) return first.name.localeCompare(second.name);
+    if (typeof firstValue === "string") return firstValue.localeCompare(secondValue) * direction;
+    return (firstValue - secondValue) * direction || first.name.localeCompare(second.name);
+  });
+}
+
+function sortValue(track, field) {
+  if (field === "startedAt") return track.startedAt ? new Date(track.startedAt).getTime() : null;
+  if (field === "name" || field === "activity") return (track[field] || "").toLocaleLowerCase();
+  return track[field];
+}
+
 function trackColor(track) {
   const index = state.tracks.findIndex((candidate) => candidate.id === track.id);
   return palette[Math.max(index, 0) % palette.length];
@@ -147,6 +167,7 @@ function syncEndpointMarkers() {
 
 function render() {
 	const visibleTracks = filteredTracks();
+  const orderedTracks = sortedTracks(visibleTracks);
   const totalDistance = visibleTracks.reduce((sum, track) => sum + track.distanceKm, 0);
   const totalAscent = visibleTracks.reduce((sum, track) => sum + track.elevationGain, 0);
   const totalDescent = visibleTracks.reduce((sum, track) => sum + track.elevationDescent, 0);
@@ -163,7 +184,7 @@ function render() {
 	} else if (visibleTracks.length === 0) {
 	  elements.trackList.innerHTML = '<div class="library-empty">No activities match these filters.</div>';
   } else {
-	  elements.trackList.innerHTML = visibleTracks.map((track) => `
+    elements.trackList.innerHTML = orderedTracks.map((track) => `
       <button class="track-item ${track.id === state.selectedId ? "active" : ""}" data-track-id="${track.id}" type="button">
 		<span class="track-swatch" style="background:${trackColor(track)}"></span>
 		<span class="activity-icon" title="${escapeHTML(track.activity || "Activity")}"><i data-lucide="${activityIcon(track.activityType)}"></i></span>
@@ -460,6 +481,18 @@ document.querySelector("#date-from").addEventListener("change", (event) => {
 document.querySelector("#date-to").addEventListener("change", (event) => {
   state.dateTo = event.target.value;
   applyFilters();
+});
+document.querySelector("#sort-by").addEventListener("change", (event) => {
+  state.sortBy = event.target.value;
+  render();
+});
+document.querySelector("#sort-direction").addEventListener("click", (event) => {
+  state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+  const ascending = state.sortDirection === "asc";
+  event.currentTarget.setAttribute("aria-label", ascending ? "Sort ascending" : "Sort descending");
+  event.currentTarget.title = ascending ? "Sort ascending" : "Sort descending";
+  event.currentTarget.innerHTML = `<i data-lucide="arrow-${ascending ? "up" : "down"}"></i>`;
+  render();
 });
 document.querySelector("#clear-filters").addEventListener("click", () => {
   state.category = "";

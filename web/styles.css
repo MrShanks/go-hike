@@ -17,7 +17,7 @@
 
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 body { overflow: hidden; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { color: inherit; }
 
 .app-shell { display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100vh; height: 100dvh; }
@@ -40,18 +40,22 @@ button { color: inherit; }
 
 .library-heading { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; font-size: 12px; font-weight: 600; }
 .library-filters { display: grid; gap: 7px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
-.category-filter { position: relative; display: flex; align-items: center; }
-.category-filter > svg { position: absolute; left: 10px; width: 13px; color: var(--muted); pointer-events: none; }
-.category-filter select, .date-filters input { width: 100%; color: #d7dae0; border: 1px solid var(--line); border-radius: 7px; outline: 0; background: #171a1f; }
-.category-filter select { height: 36px; padding: 0 30px; font-size: 10px; appearance: none; }
-.category-filter::after { position: absolute; right: 11px; content: "⌄"; color: var(--muted); font-size: 12px; pointer-events: none; }
-.category-filter select:focus, .date-filters input:focus { border-color: rgba(215, 255, 67, .45); }
+.category-filter, .sort-field { position: relative; display: flex; align-items: center; }
+.category-filter > svg, .sort-field > svg { position: absolute; left: 10px; width: 13px; color: var(--muted); pointer-events: none; }
+.category-filter select, .sort-field select, .date-filters input { width: 100%; color: #d7dae0; border: 1px solid var(--line); border-radius: 7px; outline: 0; background: #171a1f; }
+.category-filter select, .sort-field select { height: 36px; padding: 0 30px; font-size: 10px; appearance: none; }
+.category-filter::after, .sort-field::after { position: absolute; right: 11px; content: "⌄"; color: var(--muted); font-size: 12px; pointer-events: none; }
+.category-filter select:focus, .sort-field select:focus, .date-filters input:focus { border-color: rgba(215, 255, 67, .45); }
 .date-filters { display: grid; grid-template-columns: 1fr 1fr 30px; gap: 6px; align-items: end; }
 .date-filters label span { display: block; margin: 0 0 4px 2px; color: var(--muted); font-size: 7px; font-weight: 700; }
 .date-filters input { height: 32px; padding: 0 6px; color-scheme: dark; font-size: 9px; }
 .filter-clear { display: grid; width: 30px; height: 32px; padding: 0; place-items: center; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; background: #171a1f; cursor: pointer; }
 .filter-clear:hover { color: var(--text); border-color: rgba(215, 255, 67, .35); }
 .filter-clear svg { width: 13px; }
+.sort-controls { display: grid; grid-template-columns: 1fr 36px; gap: 6px; }
+.sort-direction { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; background: #171a1f; cursor: pointer; }
+.sort-direction:hover { color: var(--text); border-color: rgba(215, 255, 67, .35); }
+.sort-direction svg { width: 14px; }
 .icon-button { display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-soft); cursor: pointer; }
 .icon-button:hover { border-color: rgba(215, 255, 67, 0.5); }
 .icon-button svg { width: 16px; }

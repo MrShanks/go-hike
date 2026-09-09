@@ -101,6 +101,34 @@ func TestParseGPXHandlesMissingElevation(t *testing.T) {
 	}
 }
 
+func TestParseGPXBuildsNameFromTypeAndDate(t *testing.T) {
+	contents := []byte(`<gpx><trk><type>hiking</type><trkseg>
+		<trkpt lat="46" lon="7"><time>2026-08-20T08:00:00Z</time></trkpt>
+	</trkseg></trk></gpx>`)
+
+	result, err := parseGPX(contents, "activity.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "Hiking · 20 Aug 2026" {
+		t.Errorf("Name = %q, want Hiking · 20 Aug 2026", result.Name)
+	}
+}
+
+func TestParseGPXNameFallsBackToFileName(t *testing.T) {
+	contents := []byte(`<gpx><trk><type>hiking</type><trkseg>
+		<trkpt lat="46" lon="7" />
+	</trkseg></trk></gpx>`)
+
+	result, err := parseGPX(contents, "fallback-name.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "fallback-name" {
+		t.Errorf("Name = %q, want fallback-name", result.Name)
+	}
+}
+
 func TestParsePhotoRejectsJPEGWithoutGPS(t *testing.T) {
 	imageBuffer := new(bytes.Buffer)
 	imageData := image.NewRGBA(image.Rect(0, 0, 2, 2))
@@ -205,6 +233,8 @@ func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 	}
 	session := fitdecoder.NewSessionMsg()
 	session.Sport = fitdecoder.SportRunning
+	session.SubSport = fitdecoder.SubSportTrail
+	session.StartTime = time.Date(2026, 8, 20, 8, 0, 0, 0, time.UTC)
 	activity.Sessions = append(activity.Sessions, session)
 	for index, coordinates := range [][2]float64{{46, 7}, {46.01, 7.01}} {
 		record := fitdecoder.NewRecordMsg()
@@ -244,7 +274,7 @@ func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Imported) != 1 || result.Imported[0].Activity != "Running" || result.Imported[0].FileName != "morning-run.fit" {
+	if len(result.Imported) != 1 || result.Imported[0].Name != "Running · 20 Aug 2026" || result.Imported[0].Activity != "Running" || result.Imported[0].ActivityType != "trail_running" || result.Imported[0].FileName != "morning-run.fit" {
 		t.Fatalf("Imported = %#v, want one converted running activity", result.Imported)
 	}
 	matches, err := filepath.Glob(filepath.Join(app.dataDir, "*.gpx"))
@@ -257,5 +287,40 @@ func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 	}
 	if !strings.Contains(string(converted), "<gpx") || strings.Contains(string(converted), ".FIT") {
 		t.Errorf("saved file is not converted GPX: %q", converted)
+	}
+}
+
+func TestFITTrackNameFallsBackToFileName(t *testing.T) {
+	header := fitdecoder.NewHeader(fitdecoder.V20, false)
+	fitFile, err := fitdecoder.NewFile(fitdecoder.FileTypeActivity, header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	activity, err := fitFile.Activity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := fitdecoder.NewRecordMsg()
+	record.PositionLat = fitdecoder.NewLatitudeDegrees(46)
+	record.PositionLong = fitdecoder.NewLongitudeDegrees(7)
+	activity.Records = append(activity.Records, record)
+
+	fitContents := new(bytes.Buffer)
+	if err := fitdecoder.Encode(fitContents, fitFile, binary.LittleEndian); err != nil {
+		t.Fatal(err)
+	}
+	converted, nameSource, err := fitToGPX(fitContents.Bytes(), "fallback-name.fit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nameSource != "filename" {
+		t.Errorf("nameSource = %q, want filename", nameSource)
+	}
+	parsed, err := parseGPX(converted, "fallback-name.fit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Name != "fallback-name" {
+		t.Errorf("Name = %q, want fallback-name", parsed.Name)
 	}
 }

@@ -64,6 +64,7 @@ type trackEndpoint struct {
 type track struct {
 	ID               string           `json:"id"`
 	Name             string           `json:"name"`
+	NameSource       string           `json:"-"`
 	Activity         string           `json:"activity"`
 	ActivityType     string           `json:"activityType"`
 	FileName         string           `json:"fileName"`
@@ -367,20 +368,21 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 
 	result := trackImportResult{Imported: make([]track, 0, len(files)), Rejected: make([]trackRejection, 0)}
 	for _, header := range files {
-		log.Printf("track upload processing: name=%q size=%d", header.Filename, header.Size)
+		log.Printf("track upload processing: filename=%q size=%d", header.Filename, header.Size)
 		parsed, contents, err := readUploadedTrack(header)
 		if err != nil {
-			log.Printf("track upload rejected: name=%q size=%d error=%v", header.Filename, header.Size, err)
+			log.Printf("track upload rejected: filename=%q size=%d error=%v", header.Filename, header.Size, err)
 			result.Rejected = append(result.Rejected, trackRejection{Name: header.Filename, Reason: err.Error()})
 			continue
 		}
+		log.Printf("track upload resolved: filename=%q track_name=%q name_source=%q activity_type=%q started_at=%v", header.Filename, parsed.Name, parsed.NameSource, parsed.ActivityType, parsed.StartedAt)
 		destination := filepath.Join(s.dataDir, parsed.ID+".gpx")
 		if err := os.WriteFile(destination, contents, 0o644); err != nil {
-			log.Printf("track upload failed: name=%q id=%q size=%d destination=%q error=%v", header.Filename, parsed.ID, len(contents), destination, err)
+			log.Printf("track upload failed: filename=%q track_name=%q id=%q size=%d destination=%q error=%v", header.Filename, parsed.Name, parsed.ID, len(contents), destination, err)
 			writeError(w, http.StatusInternalServerError, "Could not save your activity")
 			return
 		}
-		log.Printf("track upload saved: name=%q id=%q size=%d destination=%q", header.Filename, parsed.ID, len(contents), destination)
+		log.Printf("track upload saved: filename=%q track_name=%q name_source=%q id=%q size=%d destination=%q", header.Filename, parsed.Name, parsed.NameSource, parsed.ID, len(contents), destination)
 		result.Imported = append(result.Imported, parsed)
 	}
 
@@ -455,10 +457,11 @@ func readUploadedTrack(header *multipart.FileHeader) (track, []byte, error) {
 	if err != nil {
 		return track{}, nil, err
 	}
+	nameSource := ""
 	switch strings.ToLower(filepath.Ext(header.Filename)) {
 	case ".gpx":
 	case ".fit":
-		contents, err = fitToGPX(contents, header.Filename)
+		contents, nameSource, err = fitToGPX(contents, header.Filename)
 		if err != nil {
 			return track{}, nil, err
 		}
@@ -466,17 +469,20 @@ func readUploadedTrack(header *multipart.FileHeader) (track, []byte, error) {
 		return track{}, nil, errors.New("only .gpx and .fit files are supported")
 	}
 	parsed, err := parseGPX(contents, header.Filename)
+	if nameSource != "" {
+		parsed.NameSource = nameSource
+	}
 	return parsed, contents, err
 }
 
-func fitToGPX(contents []byte, fileName string) ([]byte, error) {
+func fitToGPX(contents []byte, fileName string) ([]byte, string, error) {
 	fitFile, err := fitdecoder.Decode(bytes.NewReader(contents))
 	if err != nil {
-		return nil, errors.New("invalid FIT document")
+		return nil, "", errors.New("invalid FIT document")
 	}
 	activity, err := fitFile.Activity()
 	if err != nil || activity == nil {
-		return nil, errors.New("FIT file does not contain an activity")
+		return nil, "", errors.New("FIT file does not contain an activity")
 	}
 
 	segment := gpxSegment{Points: make([]gpxPoint, 0, len(activity.Records))}
@@ -501,12 +507,28 @@ func fitToGPX(contents []byte, fileName string) ([]byte, error) {
 		segment.Points = append(segment.Points, point)
 	}
 	if len(segment.Points) == 0 {
-		return nil, errors.New("FIT activity has no mappable GPS track points")
+		return nil, "", errors.New("FIT activity has no mappable GPS track points")
 	}
 
 	activityType := ""
+	var startedAt time.Time
 	if len(activity.Sessions) > 0 && activity.Sessions[0] != nil {
-		activityType = strings.ToLower(activity.Sessions[0].Sport.String())
+		session := activity.Sessions[0]
+		activityType = normalizeFITEnum(session.Sport.String())
+		subSport := normalizeFITEnum(session.SubSport.String())
+		if subSport != "" && subSport != "generic" && subSport != "invalid" {
+			if activityType == "running" && subSport == "trail" {
+				subSport = "trail_running"
+			}
+			activityType = subSport
+		}
+		startedAt = session.StartTime
+	}
+	trackName := strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName))
+	nameSource := "filename"
+	if activityType != "" && !startedAt.IsZero() {
+		trackName = activityName(activityType) + " · " + startedAt.Format("2 Jan 2006")
+		nameSource = "activity_and_date"
 	}
 	document := struct {
 		XMLName xml.Name   `xml:"gpx"`
@@ -517,16 +539,27 @@ func fitToGPX(contents []byte, fileName string) ([]byte, error) {
 		Version: "1.1",
 		Creator: "Tracks",
 		Tracks: []gpxTrack{{
-			Name:     strings.TrimSuffix(filepath.Base(fileName), filepath.Ext(fileName)),
+			Name:     trackName,
 			Type:     activityType,
 			Segments: []gpxSegment{segment},
 		}},
 	}
 	converted, err := xml.Marshal(document)
 	if err != nil {
-		return nil, errors.New("could not convert FIT activity to GPX")
+		return nil, "", errors.New("could not convert FIT activity to GPX")
 	}
-	return append([]byte(xml.Header), converted...), nil
+	return append([]byte(xml.Header), converted...), nameSource, nil
+}
+
+func normalizeFITEnum(value string) string {
+	var normalized strings.Builder
+	for index, character := range strings.TrimSpace(value) {
+		if index > 0 && character >= 'A' && character <= 'Z' {
+			normalized.WriteByte('_')
+		}
+		normalized.WriteRune(character)
+	}
+	return strings.ToLower(normalized.String())
 }
 
 func parseGPX(contents []byte, fileName string) (track, error) {
@@ -542,14 +575,12 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 	result := track{
 		ID:               hex.EncodeToString(hash[:8]),
 		Name:             strings.TrimSpace(document.Tracks[0].Name),
+		NameSource:       "gpx_metadata",
 		Activity:         activityName(document.Tracks[0].Type),
 		ActivityType:     normalizeActivityType(document.Tracks[0].Type),
 		FileName:         filepath.Base(fileName),
 		ElevationProfile: make([]elevationPoint, 0),
 		Coordinates:      make([][][]float64, 0),
-	}
-	if result.Name == "" {
-		result.Name = strings.TrimSuffix(result.FileName, filepath.Ext(result.FileName))
 	}
 
 	var firstTime, lastTime time.Time
@@ -616,6 +647,14 @@ func parseGPX(contents []byte, fileName string) (track, error) {
 		result.StartedAt = &firstTime
 		if lastTime.After(firstTime) {
 			result.Duration = int64(lastTime.Sub(firstTime).Seconds())
+		}
+	}
+	if result.Name == "" {
+		result.Name = strings.TrimSuffix(result.FileName, filepath.Ext(result.FileName))
+		result.NameSource = "filename"
+		if result.ActivityType != "" && !firstTime.IsZero() {
+			result.Name = result.Activity + " · " + firstTime.Format("2 Jan 2006")
+			result.NameSource = "activity_and_date"
 		}
 	}
 	return result, nil

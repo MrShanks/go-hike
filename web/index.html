@@ -53,6 +53,23 @@
 					<label><span>TO</span><input id="date-to" type="date" aria-label="Activities to date"></label>
 					<button class="filter-clear" id="clear-filters" type="button" aria-label="Clear activity filters" title="Clear filters"><i data-lucide="x"></i></button>
 				</div>
+				<div class="sort-controls">
+					<label class="sort-field">
+						<i data-lucide="arrow-up-down"></i>
+						<select id="sort-by" aria-label="Sort activities by">
+							<option value="startedAt">Date</option>
+							<option value="distanceKm">Distance</option>
+							<option value="elevationGain">Ascent</option>
+							<option value="elevationDescent">Descent</option>
+							<option value="duration">Duration</option>
+							<option value="highestPoint">Highest point</option>
+							<option value="lowestPoint">Lowest point</option>
+							<option value="name">Name</option>
+							<option value="activity">Activity</option>
+						</select>
+					</label>
+					<button class="sort-direction" id="sort-direction" type="button" aria-label="Sort descending" title="Sort descending"><i data-lucide="arrow-down"></i></button>
+				</div>
 			</div>
 			<div class="track-list" id="track-list"></div>
 
