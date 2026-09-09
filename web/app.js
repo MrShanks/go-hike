@@ -185,12 +185,12 @@ function render() {
 	  elements.trackList.innerHTML = '<div class="library-empty">No activities match these filters.</div>';
   } else {
     elements.trackList.innerHTML = orderedTracks.map((track) => `
-      <button class="track-item ${track.id === state.selectedId ? "active" : ""}" data-track-id="${track.id}" type="button">
+    <div class="track-item ${track.id === state.selectedId ? "active" : ""}" data-track-id="${track.id}">
 		<span class="track-swatch" style="background:${trackColor(track)}"></span>
 		<span class="activity-icon" title="${escapeHTML(track.activity || "Activity")}"><i data-lucide="${activityIcon(track.activityType)}"></i></span>
-		<span class="track-copy"><strong>${escapeHTML(track.name)}</strong><span>${escapeHTML(track.activity || "Activity")} · ${formatDate(track.startedAt)}</span></span>
+    <span class="track-copy"><button class="track-name" type="button" aria-label="Rename ${escapeHTML(track.name)}" title="Rename activity">${escapeHTML(track.name)}</button><span>${escapeHTML(track.activity || "Activity")} · ${formatDate(track.startedAt)}</span></span>
         <span class="track-distance">${formatDistance(track.distanceKm)}</span>
-      </button>`).join("");
+    </div>`).join("");
   }
   lucide.createIcons();
   syncMap();
@@ -406,6 +406,54 @@ async function deleteSelectedTrack() {
   showToast("Activity deleted");
 }
 
+function beginTrackRename(button) {
+  const item = button.closest("[data-track-id]");
+  const track = state.tracks.find((candidate) => candidate.id === item?.dataset.trackId);
+  if (!track) return;
+  const input = document.createElement("input");
+  input.className = "track-name-input";
+  input.value = track.name;
+  input.maxLength = 200;
+  input.setAttribute("aria-label", "Activity name");
+  button.replaceWith(input);
+  input.focus();
+  input.select();
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("blur", () => render(), { once: true });
+  input.addEventListener("keydown", async (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      input.blur();
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const name = input.value.trim();
+    if (!name) {
+      showToast("Activity name cannot be empty");
+      return;
+    }
+    input.disabled = true;
+    try {
+      const response = await fetch(`/api/tracks/${track.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not rename this activity");
+      track.name = result.name;
+      if (state.selectedId === track.id) document.querySelector("#detail-name").textContent = result.name;
+      render();
+      showToast("Activity renamed");
+    } catch (error) {
+      input.disabled = false;
+      input.focus();
+      showToast(error.message);
+    }
+  });
+}
+
 function formatDistance(distance, unit = true) {
   const value = distance >= 100 ? Math.round(distance).toLocaleString() : distance.toFixed(1);
   return unit ? `${value} km` : value;
@@ -453,6 +501,12 @@ elements.fileInput.addEventListener("change", () => importFiles(elements.fileInp
 document.querySelector("#photo-import-button").addEventListener("click", () => elements.photoInput.click());
 elements.photoInput.addEventListener("change", () => importPhotos(elements.photoInput.files));
 elements.trackList.addEventListener("click", (event) => {
+  const name = event.target.closest(".track-name");
+  if (name) {
+    event.stopPropagation();
+    beginTrackRename(name);
+    return;
+  }
   const item = event.target.closest("[data-track-id]");
   if (item) selectTrack(item.dataset.trackId, true);
 });

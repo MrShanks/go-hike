@@ -221,6 +221,36 @@ func TestImportTracksKeepsValidFilesWhenAnotherIsRejected(t *testing.T) {
 	}
 }
 
+func TestRenameTrackPersistsNameOverride(t *testing.T) {
+	contents := []byte(`<gpx><trk><name>Original name</name><type>hiking</type><trkseg>
+		<trkpt lat="46" lon="7"><time>2026-08-20T08:00:00Z</time></trkpt>
+	</trkseg></trk></gpx>`)
+	parsed, err := parseGPX(contents, "original.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &server{dataDir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(app.dataDir, parsed.ID+".gpx"), contents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/tracks/"+parsed.ID, strings.NewReader(`{"name":"  Evening ridge walk  "}`))
+	request.SetPathValue("id", parsed.ID)
+	recorder := httptest.NewRecorder()
+	app.renameTrack(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	tracks, err := app.loadTracks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tracks) != 1 || tracks[0].Name != "Evening ridge walk" || tracks[0].NameSource != "user" {
+		t.Fatalf("tracks = %#v, want persisted user name", tracks)
+	}
+}
+
 func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 	header := fitdecoder.NewHeader(fitdecoder.V20, false)
 	fitFile, err := fitdecoder.NewFile(fitdecoder.FileTypeActivity, header)

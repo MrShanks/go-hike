@@ -111,6 +111,10 @@ type trackRejection struct {
 	Reason string `json:"reason"`
 }
 
+type trackMetadata struct {
+	Name string `json:"name"`
+}
+
 type server struct {
 	dataDir string
 	static  fs.FS
@@ -136,6 +140,7 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tracks", s.listTracks)
 	mux.HandleFunc("POST /api/tracks", s.importTracks)
+	mux.HandleFunc("PATCH /api/tracks/{id}", s.renameTrack)
 	mux.HandleFunc("DELETE /api/tracks/{id}", s.deleteTrack)
 	mux.HandleFunc("GET /api/photos", s.listPhotos)
 	mux.HandleFunc("POST /api/photos", s.importPhotos)
@@ -413,7 +418,44 @@ func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Could not delete your activity")
 		return
 	}
+	_ = os.Remove(filepath.Join(s.dataDir, id+".json"))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) renameTrack(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !validID(id) {
+		writeError(w, http.StatusBadRequest, "Invalid track ID")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(s.dataDir, id+".gpx")); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusNotFound, "Activity not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Could not rename your activity")
+		return
+	}
+
+	var request trackMetadata
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 4096))
+	if err := decoder.Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "Provide a valid activity name")
+		return
+	}
+	request.Name = strings.TrimSpace(request.Name)
+	if request.Name == "" || len([]rune(request.Name)) > 200 {
+		writeError(w, http.StatusBadRequest, "Activity name must be between 1 and 200 characters")
+		return
+	}
+
+	contents, err := json.Marshal(request)
+	if err != nil || os.WriteFile(filepath.Join(s.dataDir, id+".json"), contents, 0o644) != nil {
+		writeError(w, http.StatusInternalServerError, "Could not rename your activity")
+		return
+	}
+	log.Printf("track renamed: id=%q track_name=%q", id, request.Name)
+	writeJSON(w, http.StatusOK, request)
 }
 
 func (s *server) loadTracks() ([]track, error) {
@@ -432,6 +474,16 @@ func (s *server) loadTracks() ([]track, error) {
 		if err != nil {
 			log.Printf("skipping invalid GPX file %s: %v", path, err)
 			continue
+		}
+		metadataContents, err := os.ReadFile(filepath.Join(s.dataDir, parsed.ID+".json"))
+		if err == nil {
+			var metadata trackMetadata
+			if json.Unmarshal(metadataContents, &metadata) == nil && strings.TrimSpace(metadata.Name) != "" {
+				parsed.Name = strings.TrimSpace(metadata.Name)
+				parsed.NameSource = "user"
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
 		}
 		tracks = append(tracks, parsed)
 	}
