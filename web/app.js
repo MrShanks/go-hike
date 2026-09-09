@@ -1,12 +1,16 @@
-const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, category: "", dateFrom: "", dateTo: "", sortBy: "startedAt", sortDirection: "desc", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
+const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, galleryTrackId: null, gallerySelectionMode: false, selectedGalleryPhotoIds: new Set(), category: "", dateFrom: "", dateTo: "", sortBy: "startedAt", sortDirection: "desc", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
 const palette = ["#d7ff43", "#ff8a5b", "#55d8ff", "#f0bbff", "#72e6a1", "#ffd166"];
 const elements = {
   fileInput: document.querySelector("#file-input"),
   photoInput: document.querySelector("#photo-input"),
+	trackPhotoInput: document.querySelector("#track-photo-input"),
   trackList: document.querySelector("#track-list"),
   emptyState: document.querySelector("#empty-state"),
   detailPanel: document.querySelector("#detail-panel"),
+  galleryPanel: document.querySelector("#gallery-panel"),
+  galleryGrid: document.querySelector("#gallery-grid"),
   photoPanel: document.querySelector("#photo-panel"),
+	lightboxPanel: document.querySelector("#lightbox-panel"),
   dropOverlay: document.querySelector("#drop-overlay"),
   toast: document.querySelector("#toast"),
 };
@@ -135,7 +139,7 @@ function syncActivityMarkers() {
 function syncPhotoMarkers() {
   state.photoMarkers.forEach((marker) => marker.remove());
   state.photoMarkers = [];
-  state.photos.forEach((photo) => {
+	state.photos.filter((photo) => photo.hasLocation).forEach((photo) => {
     const element = document.createElement("button");
     element.className = `photo-marker ${photo.id === state.selectedPhotoId ? "active" : ""}`;
     element.type = "button";
@@ -218,7 +222,10 @@ function selectTrack(id, focus = false) {
   if (!track) return;
   state.selectedId = id;
   state.selectedPhotoId = null;
+  state.galleryTrackId = null;
+  elements.galleryPanel.classList.remove("open");
   elements.photoPanel.classList.remove("open");
+	elements.lightboxPanel.classList.remove("open");
   document.querySelector("#detail-name").textContent = track.name;
 	document.querySelector("#detail-activity").textContent = (track.activity || "Activity").toUpperCase();
   document.querySelector("#detail-date").textContent = formatDate(track.startedAt).toUpperCase();
@@ -230,25 +237,123 @@ function selectTrack(id, focus = false) {
   document.querySelector("#detail-duration").textContent = formatDuration(track.duration);
   document.querySelector("#detail-start").textContent = track.start?.name || "Start";
   document.querySelector("#detail-end").textContent = track.end?.name || "Finish";
+  refreshTrackPhotoCount();
   renderElevationProfile(track);
   elements.detailPanel.classList.add("open");
   render();
   if (focus) fitTracks([track]);
 }
 
-function selectPhoto(id) {
+function selectPhoto(id, preserveTrack = false) {
   const photo = state.photos.find((candidate) => candidate.id === id);
   if (!photo) return;
   state.selectedPhotoId = id;
-  state.selectedId = null;
-  elements.detailPanel.classList.remove("open");
-  document.querySelector("#photo-preview").src = photo.url;
-  document.querySelector("#photo-preview").alt = photo.name;
-  document.querySelector("#photo-name").textContent = photo.name;
-  document.querySelector("#photo-date").textContent = formatPhotoDate(photo.capturedAt);
-  elements.photoPanel.classList.add("open");
+  if (!preserveTrack) {
+    state.selectedId = null;
+    state.galleryTrackId = null;
+    elements.galleryPanel.classList.remove("open");
+    elements.detailPanel.classList.remove("open");
+  }
+  if (preserveTrack) {
+    document.querySelector("#lightbox-preview").src = photo.url;
+    document.querySelector("#lightbox-preview").alt = photo.name;
+    document.querySelector("#lightbox-name").textContent = photo.name;
+    document.querySelector("#lightbox-date").textContent = formatPhotoDate(photo.capturedAt);
+    const photos = photoNavigationItems();
+    const photoIndex = photos.findIndex((candidate) => candidate.id === photo.id);
+    document.querySelector("#photo-position").textContent = photos.length > 1 ? `${photoIndex + 1} OF ${photos.length}` : "ACTIVITY PHOTO";
+    document.querySelector("#previous-photo").hidden = photos.length < 2;
+    document.querySelector("#next-photo").hidden = photos.length < 2;
+    elements.lightboxPanel.classList.add("open");
+  } else {
+    document.querySelector("#photo-preview").src = photo.url;
+    document.querySelector("#photo-preview").alt = photo.name;
+    document.querySelector("#photo-name").textContent = photo.name;
+    document.querySelector("#photo-date").textContent = formatPhotoDate(photo.capturedAt);
+    elements.photoPanel.classList.add("open");
+  }
   syncMap();
   map.easeTo({ center: [photo.longitude, photo.latitude], zoom: Math.max(map.getZoom(), 13), duration: 700 });
+}
+
+function photoNavigationItems() {
+  return state.galleryTrackId ? photosForTrack(state.galleryTrackId) : state.photos;
+}
+
+function navigatePhoto(direction) {
+  const photos = photoNavigationItems();
+  if (photos.length < 2) return;
+  const currentIndex = photos.findIndex((photo) => photo.id === state.selectedPhotoId);
+  const nextIndex = (currentIndex + direction + photos.length) % photos.length;
+  selectPhoto(photos[nextIndex].id, Boolean(state.galleryTrackId));
+}
+
+function closePhoto() {
+  state.selectedPhotoId = null;
+  elements.photoPanel.classList.remove("open");
+  elements.lightboxPanel.classList.remove("open");
+  syncMap();
+}
+
+function photosForTrack(trackId) {
+  return state.photos.filter((photo) => photo.trackId === trackId);
+}
+
+function refreshTrackPhotoCount() {
+  const photoCount = photosForTrack(state.selectedId).length;
+  document.querySelector("#track-photo-count").textContent = `${photoCount} ${photoCount === 1 ? "photo" : "photos"}`;
+}
+
+function openTrackGallery() {
+  const track = state.tracks.find((candidate) => candidate.id === state.selectedId);
+  if (!track) return;
+  state.galleryTrackId = track.id;
+  state.gallerySelectionMode = false;
+  state.selectedGalleryPhotoIds.clear();
+  document.querySelector("#gallery-title").textContent = track.name;
+  renderTrackGallery();
+  elements.galleryPanel.classList.add("open");
+}
+
+function renderTrackGallery() {
+  const photos = photosForTrack(state.galleryTrackId);
+	elements.galleryGrid.innerHTML = photos.length ? photos.map((photo) => `
+  <button class="gallery-item ${state.selectedGalleryPhotoIds.has(photo.id) ? "selected" : ""}" type="button" data-photo-id="${photo.id}" aria-label="${state.gallerySelectionMode ? "Select" : "View"} ${escapeHTML(photo.name)}" aria-pressed="${state.selectedGalleryPhotoIds.has(photo.id)}">
+      <img src="${photo.url}" alt="${escapeHTML(photo.name)}" loading="lazy">
+    <span class="gallery-check"><i data-lucide="check"></i></span>
+    <span class="gallery-caption">${formatPhotoDate(photo.capturedAt)}</span>
+	</button>`).join("") : '<div class="gallery-empty"><i data-lucide="image-plus"></i><span>No photos yet</span></div>';
+  const selectButton = document.querySelector("#select-gallery-photos");
+  elements.galleryPanel.classList.toggle("selection-mode", state.gallerySelectionMode);
+  selectButton.classList.toggle("active", state.gallerySelectionMode);
+  selectButton.setAttribute("aria-pressed", state.gallerySelectionMode);
+  selectButton.title = state.gallerySelectionMode ? "Cancel selection" : "Select photos";
+  const deleteButton = document.querySelector("#delete-gallery-photos");
+  deleteButton.hidden = !state.gallerySelectionMode;
+  deleteButton.disabled = state.selectedGalleryPhotoIds.size === 0;
+  document.querySelector("#gallery-selection-count").textContent = state.selectedGalleryPhotoIds.size;
+  deleteButton.setAttribute("aria-label", `Delete ${state.selectedGalleryPhotoIds.size} selected photos`);
+  lucide.createIcons();
+}
+
+function toggleGallerySelectionMode() {
+  state.gallerySelectionMode = !state.gallerySelectionMode;
+  state.selectedGalleryPhotoIds.clear();
+  renderTrackGallery();
+}
+
+async function deleteSelectedGalleryPhotos() {
+  const ids = [...state.selectedGalleryPhotoIds];
+  if (!ids.length || !window.confirm(`Delete ${ids.length} selected ${ids.length === 1 ? "photo" : "photos"}?`)) return;
+  const results = await Promise.all(ids.map(async (id) => ({ id, ok: (await fetch(`/api/photos/${id}`, { method: "DELETE" })).ok })));
+  const deletedIds = new Set(results.filter((result) => result.ok).map((result) => result.id));
+  state.photos = state.photos.filter((photo) => !deletedIds.has(photo.id));
+  state.selectedGalleryPhotoIds.clear();
+  refreshTrackPhotoCount();
+  renderTrackGallery();
+  syncMap();
+  const failed = results.length - deletedIds.size;
+  showToast(failed ? `${deletedIds.size} deleted · ${failed} could not be deleted` : `${deletedIds.size} ${deletedIds.size === 1 ? "photo" : "photos"} deleted`);
 }
 
 function renderElevationProfile(track) {
@@ -277,13 +382,48 @@ function renderElevationProfile(track) {
     <line class="profile-guide" x1="0" y1="${height - 1}" x2="${width}" y2="${height - 1}"></line>
     <polygon class="profile-area" points="${area}"></polygon>
     <polyline class="profile-line" points="${points}"></polyline>
-  </svg>`;
+    <g class="profile-hover" hidden>
+      <line class="profile-hover-line" y1="4" y2="${height - 1}"></line>
+      <circle class="profile-hover-point" r="4"></circle>
+    </g>
+  </svg><div class="profile-tooltip" role="tooltip" hidden></div>`;
+
+  const svg = container.querySelector("svg");
+  const hover = container.querySelector(".profile-hover");
+  const hoverLine = container.querySelector(".profile-hover-line");
+  const hoverPoint = container.querySelector(".profile-hover-point");
+  const tooltip = container.querySelector(".profile-tooltip");
+  svg.addEventListener("pointermove", (event) => {
+    const bounds = svg.getBoundingClientRect();
+    const pointerX = Math.max(0, Math.min(bounds.width, event.clientX - bounds.left));
+    const distanceKm = (pointerX / bounds.width) * distanceSpan;
+    const nearest = profile.reduce((closest, point) =>
+      Math.abs(point.distanceKm - distanceKm) < Math.abs(closest.distanceKm - distanceKm) ? point : closest
+    );
+    const x = (nearest.distanceKm / distanceSpan) * width;
+    const y = height - ((nearest.elevation - track.lowestPoint) / elevationSpan) * (height - 8) - 4;
+    hoverLine.setAttribute("x1", x);
+    hoverLine.setAttribute("x2", x);
+    hoverPoint.setAttribute("cx", x);
+    hoverPoint.setAttribute("cy", y);
+    tooltip.textContent = formatElevation(nearest.elevation);
+    tooltip.style.left = `${(x / width) * 100}%`;
+    tooltip.style.top = `${(y / height) * 100}%`;
+    tooltip.classList.toggle("align-start", x < width * 0.08);
+    tooltip.classList.toggle("align-end", x > width * 0.92);
+    hover.hidden = false;
+    tooltip.hidden = false;
+  });
+  svg.addEventListener("pointerleave", () => {
+    hover.hidden = true;
+    tooltip.hidden = true;
+  });
 }
 
 function fitTracks(tracks = state.tracks) {
   const points = tracks.flatMap((track) => track.coordinates.flat());
   if (tracks === state.tracks) {
-    points.push(...state.photos.map((photo) => [photo.longitude, photo.latitude]));
+	points.push(...state.photos.filter((photo) => photo.hasLocation).map((photo) => [photo.longitude, photo.latitude]));
   }
   if (!points.length) return;
   const bounds = points.reduce((box, coordinate) => box.extend(coordinate), new maplibregl.LngLatBounds(points[0], points[0]));
@@ -308,6 +448,7 @@ async function loadPhotos() {
     const response = await fetch("/api/photos");
     if (!response.ok) throw new Error("Could not load photos");
     state.photos = await response.json();
+    refreshTrackPhotoCount();
     syncMap();
   } catch (error) {
     showToast(error.message);
@@ -329,6 +470,7 @@ async function importFiles(fileList) {
     if (!response.ok) throw new Error(result.error || "Import failed");
   const importedIds = new Set(result.imported.map((track) => track.id));
     state.tracks = [...result.imported, ...state.tracks.filter((track) => !importedIds.has(track.id))];
+  await loadPhotos();
   	renderCategoryOptions();
     render();
   if (result.imported.length) fitTracks(result.imported);
@@ -345,7 +487,7 @@ async function importFiles(fileList) {
   }
 }
 
-async function importPhotos(fileList) {
+async function importPhotos(fileList, trackId = "") {
   const files = [...fileList].filter((file) => /\.jpe?g$/i.test(file.name) || file.type === "image/jpeg");
   if (!files.length) {
     showToast("Choose one or more JPEG photos");
@@ -353,13 +495,16 @@ async function importPhotos(fileList) {
   }
   const body = new FormData();
   files.forEach((file) => body.append("files", file));
-  showToast(`Checking GPS data in ${files.length} ${files.length === 1 ? "photo" : "photos"}…`);
+  showToast(trackId ? `Adding ${files.length} ${files.length === 1 ? "photo" : "photos"} to activity…` : `Checking GPS data in ${files.length} ${files.length === 1 ? "photo" : "photos"}…`);
   try {
-    const response = await fetch("/api/photos", { method: "POST", body });
+	const endpoint = trackId ? `/api/tracks/${trackId}/photos` : "/api/photos";
+	const response = await fetch(endpoint, { method: "POST", body });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Photo import failed");
     const importedIds = new Set(result.imported.map((photo) => photo.id));
     state.photos = [...result.imported, ...state.photos.filter((photo) => !importedIds.has(photo.id))];
+    refreshTrackPhotoCount();
+	if (trackId) openTrackGallery();
     syncMap();
     if (result.imported.length) fitTracks();
     if (result.rejected.length) {
@@ -372,6 +517,7 @@ async function importPhotos(fileList) {
     showToast(error.message);
   } finally {
     elements.photoInput.value = "";
+	elements.trackPhotoInput.value = "";
   }
 }
 
@@ -386,6 +532,16 @@ async function deleteSelectedPhoto() {
   state.photos = state.photos.filter((candidate) => candidate.id !== photo.id);
   state.selectedPhotoId = null;
   elements.photoPanel.classList.remove("open");
+	elements.lightboxPanel.classList.remove("open");
+	refreshTrackPhotoCount();
+  if (state.galleryTrackId) {
+    if (photosForTrack(state.galleryTrackId).length) {
+      openTrackGallery();
+    } else {
+      state.galleryTrackId = null;
+      elements.galleryPanel.classList.remove("open");
+    }
+  }
   syncMap();
   showToast("Photo deleted");
 }
@@ -500,6 +656,7 @@ document.querySelectorAll("#import-button, #import-map-button, #empty-import-but
 elements.fileInput.addEventListener("change", () => importFiles(elements.fileInput.files));
 document.querySelector("#photo-import-button").addEventListener("click", () => elements.photoInput.click());
 elements.photoInput.addEventListener("change", () => importPhotos(elements.photoInput.files));
+elements.trackPhotoInput.addEventListener("change", () => importPhotos(elements.trackPhotoInput.files, state.galleryTrackId));
 elements.trackList.addEventListener("click", (event) => {
   const name = event.target.closest(".track-name");
   if (name) {
@@ -512,18 +669,50 @@ elements.trackList.addEventListener("click", (event) => {
 });
 document.querySelector("#fit-button").addEventListener("click", () => fitTracks());
 document.querySelector("#focus-track").addEventListener("click", () => selectTrack(state.selectedId, true));
+document.querySelector("#track-photos").addEventListener("click", openTrackGallery);
+document.querySelector("#add-track-photos").addEventListener("click", () => elements.trackPhotoInput.click());
+document.querySelector("#select-gallery-photos").addEventListener("click", toggleGallerySelectionMode);
+document.querySelector("#delete-gallery-photos").addEventListener("click", deleteSelectedGalleryPhotos);
+document.querySelector("#close-gallery").addEventListener("click", () => {
+  state.galleryTrackId = null;
+  state.gallerySelectionMode = false;
+  state.selectedGalleryPhotoIds.clear();
+  elements.galleryPanel.classList.remove("open");
+});
+elements.galleryGrid.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-photo-id]");
+  if (!item) return;
+  if (state.gallerySelectionMode) {
+    if (state.selectedGalleryPhotoIds.has(item.dataset.photoId)) {
+      state.selectedGalleryPhotoIds.delete(item.dataset.photoId);
+    } else {
+      state.selectedGalleryPhotoIds.add(item.dataset.photoId);
+    }
+    renderTrackGallery();
+    return;
+  }
+  selectPhoto(item.dataset.photoId, true);
+});
 document.querySelector("#delete-track").addEventListener("click", deleteSelectedTrack);
 document.querySelector("#close-detail").addEventListener("click", () => {
   state.selectedId = null;
   elements.detailPanel.classList.remove("open");
   render();
 });
-document.querySelector("#close-photo").addEventListener("click", () => {
-  state.selectedPhotoId = null;
-  elements.photoPanel.classList.remove("open");
-  syncMap();
+document.querySelector("#close-photo").addEventListener("click", closePhoto);
+document.querySelector("#close-lightbox").addEventListener("click", closePhoto);
+document.querySelector("#previous-photo").addEventListener("click", () => navigatePhoto(-1));
+document.querySelector("#next-photo").addEventListener("click", () => navigatePhoto(1));
+elements.lightboxPanel.addEventListener("click", (event) => {
+  if (event.target === elements.lightboxPanel) closePhoto();
 });
-document.querySelector("#delete-photo").addEventListener("click", deleteSelectedPhoto);
+document.addEventListener("keydown", (event) => {
+  if (!elements.lightboxPanel.classList.contains("open")) return;
+  if (event.key === "Escape") closePhoto();
+  if (event.key === "ArrowLeft") navigatePhoto(-1);
+  if (event.key === "ArrowRight") navigatePhoto(1);
+});
+document.querySelectorAll(".delete-photo").forEach((button) => button.addEventListener("click", deleteSelectedPhoto));
 document.querySelector("#category-filter").addEventListener("change", (event) => {
   state.category = event.target.value;
   applyFilters();

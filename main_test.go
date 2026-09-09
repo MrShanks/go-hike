@@ -136,9 +136,106 @@ func TestParsePhotoRejectsJPEGWithoutGPS(t *testing.T) {
 	if err := jpeg.Encode(imageBuffer, imageData, nil); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := parsePhoto(imageBuffer.Bytes(), "ordinary.jpg")
+	_, _, err := parsePhoto(imageBuffer.Bytes(), "ordinary.jpg", false)
 	if err == nil {
 		t.Fatal("parsePhoto() accepted a JPEG without GPS information")
+	}
+}
+
+func TestParsePhotoAllowsMissingGPSForExplicitTrack(t *testing.T) {
+	imageBuffer := new(bytes.Buffer)
+	if err := jpeg.Encode(imageBuffer, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := parsePhoto(imageBuffer.Bytes(), "ordinary.jpg", true)
+	if err != nil {
+		t.Fatalf("parsePhoto() error = %v", err)
+	}
+	if result.HasLocation || result.Name != "ordinary.jpg" {
+		t.Errorf("photo = %#v, want named photo without location", result)
+	}
+}
+
+func TestImportPhotoWithoutGPSToExplicitTrack(t *testing.T) {
+	trackContents := []byte(`<gpx><trk><name>Ridge walk</name><trkseg><trkpt lat="46" lon="7"/></trkseg></trk></gpx>`)
+	parsedTrack, err := parseGPX(trackContents, "ridge.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &server{dataDir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(app.dataDir, parsedTrack.ID+".gpx"), trackContents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	imageBuffer := new(bytes.Buffer)
+	if err := jpeg.Encode(imageBuffer, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+		t.Fatal(err)
+	}
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("files", "ordinary.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(imageBuffer.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tracks/"+parsedTrack.ID+"/photos", body)
+	request.SetPathValue("id", parsedTrack.ID)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app.importPhotos(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	var result photoImportResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Imported) != 1 || result.Imported[0].TrackID != parsedTrack.ID || !result.Imported[0].ManualAssignment || result.Imported[0].HasLocation {
+		t.Fatalf("Imported = %#v, want assigned photo without location", result.Imported)
+	}
+	photos, err := app.loadPhotos()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(photos) != 1 || photos[0].TrackID != parsedTrack.ID {
+		t.Fatalf("photos = %#v, want persisted track assignment", photos)
+	}
+}
+
+func TestAssignPhotoToNearestTrackOnSameLocalDay(t *testing.T) {
+	photoTime := time.Date(2026, 8, 23, 0, 30, 0, 0, time.FixedZone("CEST", 2*60*60))
+	nearTime := time.Date(2026, 8, 22, 22, 15, 0, 0, time.UTC)
+	farTime := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	item := photo{HasLocation: true, Latitude: 46.8, Longitude: 8.0, CapturedAt: &photoTime}
+	tracks := []track{
+		{ID: "near", StartedAt: &nearTime, Coordinates: [][][]float64{{{8.01, 46.8}}}},
+		{ID: "far", StartedAt: &farTime, Coordinates: [][][]float64{{{9.0, 47.0}}}},
+	}
+
+	if !assignPhotoToNearestTrack(&item, tracks) {
+		t.Fatal("assignPhotoToNearestTrack() did not report a changed assignment")
+	}
+	if item.TrackID != "near" {
+		t.Errorf("TrackID = %q, want near", item.TrackID)
+	}
+}
+
+func TestAssignPhotoToNearestTrackRequiresSameDay(t *testing.T) {
+	photoTime := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	trackTime := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	item := photo{TrackID: "old", HasLocation: true, Latitude: 46.8, Longitude: 8.0, CapturedAt: &photoTime}
+
+	if !assignPhotoToNearestTrack(&item, []track{{ID: "other", StartedAt: &trackTime, Coordinates: [][][]float64{{{8.0, 46.8}}}}}) {
+		t.Fatal("assignPhotoToNearestTrack() did not clear a stale assignment")
+	}
+	if item.TrackID != "" {
+		t.Errorf("TrackID = %q, want no assignment", item.TrackID)
 	}
 }
 

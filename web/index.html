@@ -137,19 +137,47 @@
 					<div class="elevation-chart" id="elevation-chart"></div>
 				</div>
 				<div class="detail-actions">
-					<button class="secondary-button" id="focus-track" type="button"><i data-lucide="locate-fixed"></i>Focus track</button>
+					<div>
+						<button class="secondary-button" id="focus-track" type="button"><i data-lucide="locate-fixed"></i>Focus track</button>
+						<button class="secondary-button" id="track-photos" type="button"><i data-lucide="images"></i><span id="track-photo-count">Photos</span></button>
+					</div>
 					<button class="danger-button" id="delete-track" type="button" aria-label="Delete activity" title="Delete activity"><i data-lucide="trash-2"></i></button>
 				</div>
 			</section>
 
+			<section class="gallery-panel" id="gallery-panel" aria-labelledby="gallery-title">
+				<div class="gallery-header">
+					<div><span>ACTIVITY PHOTOS</span><h2 id="gallery-title">Photos</h2></div>
+					<div class="gallery-actions">
+						<button class="icon-button" id="add-track-photos" type="button" aria-label="Add photos to activity" title="Add photos"><i data-lucide="image-plus"></i></button>
+						<button class="icon-button" id="select-gallery-photos" type="button" aria-label="Select photos" title="Select photos"><i data-lucide="square-check-big"></i></button>
+						<button class="gallery-delete" id="delete-gallery-photos" type="button" aria-label="Delete selected photos" title="Delete selected photos" hidden><i data-lucide="trash-2"></i><span id="gallery-selection-count">0</span></button>
+						<button class="icon-button" id="close-gallery" type="button" aria-label="Close gallery"><i data-lucide="x"></i></button>
+					</div>
+				</div>
+				<div class="gallery-grid" id="gallery-grid"></div>
+			</section>
+
+			<section class="lightbox-panel" id="lightbox-panel" aria-live="polite" aria-modal="true" role="dialog" aria-label="Photo viewer">
+				<button class="lightbox-close" id="close-lightbox" type="button" aria-label="Close photo"><i data-lucide="x"></i></button>
+				<button class="lightbox-nav previous" id="previous-photo" type="button" aria-label="Previous photo"><i data-lucide="chevron-left"></i></button>
+				<figure class="lightbox-content">
+					<img id="lightbox-preview" alt="">
+					<figcaption class="photo-copy">
+						<div><span id="photo-position">ACTIVITY PHOTO</span><strong id="lightbox-name">Photo</strong><small id="lightbox-date">Date unknown</small></div>
+						<button class="danger-button delete-photo" type="button" aria-label="Delete photo" title="Delete photo"><i data-lucide="trash-2"></i></button>
+					</figcaption>
+				</figure>
+				<button class="lightbox-nav next" id="next-photo" type="button" aria-label="Next photo"><i data-lucide="chevron-right"></i></button>
+			</section>
+
 			<section class="photo-panel" id="photo-panel" aria-live="polite">
-				<div class="detail-handle"></div>
 				<img id="photo-preview" alt="">
 				<div class="photo-copy">
-					<div><span>ACTIVITY PHOTO</span><strong id="photo-name">Photo</strong><small id="photo-date">Date unknown</small></div>
+					<div><span>MAP PHOTO</span><strong id="photo-name">Photo</strong><small id="photo-date">Date unknown</small></div>
 					<div class="photo-actions">
 						<button class="icon-button" id="close-photo" type="button" aria-label="Close photo"><i data-lucide="x"></i></button>
-						<button class="danger-button" id="delete-photo" type="button" aria-label="Delete photo" title="Delete photo"><i data-lucide="trash-2"></i></button>
+						<button class="danger-button delete-photo" type="button" aria-label="Delete photo" title="Delete photo"><i data-lucide="trash-2"></i></button>
 					</div>
 				</div>
 			</section>
@@ -162,6 +190,7 @@
 	</div>
 	<input id="file-input" type="file" accept=".gpx,.fit,application/gpx+xml,application/vnd.ant.fit" multiple hidden>
 	<input id="photo-input" type="file" accept=".jpg,.jpeg,image/jpeg" multiple hidden>
+	<input id="track-photo-input" type="file" accept=".jpg,.jpeg,image/jpeg" multiple hidden>
 	<script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js"></script>
 	<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 	<script src="/app.js"></script>
