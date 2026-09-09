@@ -1,6 +1,6 @@
 # Tracks
 
-A private activity atlas built with Go and MapLibre. Import GPX or FIT files for hiking, running, cycling, swimming, and other activities; FIT activities are converted to GPX automatically. See every mappable route on a dark interactive map and click a track for distance, elevation, date, and duration. Geotagged JPEG photos can also be imported and viewed at their GPS location; photos without embedded GPS information are skipped.
+A private activity atlas built with Go and MapLibre. Import GPX or FIT files for hiking, running, cycling, swimming, and other activities; FIT activities are converted to GPX automatically. See every mappable route on a dark interactive map, inspect elevation profiles, and switch between flat and 3D terrain. Geotagged JPEG photos are matched to nearby same-day activities, while photos without GPS data can be added directly to an activity gallery.
 
 ## Run
 
@@ -46,6 +46,14 @@ docker run --rm -p 8080:8080 \
 ```
 
 The bind mount keeps imported GPX and photo files in this repository's `data/` directory. The directory is excluded from the image build context so private activity data is not included in the image.
+
+## Project layout
+
+- `main.go` contains application startup, route registration, and shared HTTP helpers.
+- `tracks.go` owns GPX/FIT parsing, track persistence, and track handlers.
+- `photos.go` owns photo parsing, persistence, matching, and photo handlers.
+- `web/` contains the embedded browser interface.
+- `main_test.go` covers parsing, matching, imports, persistence, and route contracts.
 
 ## Test
 

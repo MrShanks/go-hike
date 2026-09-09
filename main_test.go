@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -345,6 +346,56 @@ func TestRenameTrackPersistsNameOverride(t *testing.T) {
 	}
 	if len(tracks) != 1 || tracks[0].Name != "Evening ridge walk" || tracks[0].NameSource != "user" {
 		t.Fatalf("tracks = %#v, want persisted user name", tracks)
+	}
+}
+
+func TestDeleteResourceRoutesRemoveFiles(t *testing.T) {
+	const id = "0123456789abcdef"
+	tests := []struct {
+		name  string
+		path  string
+		files []string
+	}{
+		{name: "track", path: "/api/tracks/" + id, files: []string{id + ".gpx", id + ".json"}},
+		{name: "photo", path: "/api/photos/" + id, files: []string{filepath.Join("photos", id+".jpg"), filepath.Join("photos", id+".json")}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			app := &server{dataDir: dataDir}
+			for _, name := range test.files {
+				path := filepath.Join(dataDir, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			recorder := httptest.NewRecorder()
+			app.routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, test.path, nil))
+			if recorder.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusNoContent, recorder.Body.String())
+			}
+			for _, name := range test.files {
+				if _, err := os.Stat(filepath.Join(dataDir, name)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("%s still exists after deletion", name)
+				}
+			}
+		})
+	}
+}
+
+func TestDeleteResourceRoutesRejectInvalidIDs(t *testing.T) {
+	app := &server{dataDir: t.TempDir()}
+	for _, path := range []string{"/api/tracks/not-an-id", "/api/photos/not-an-id"} {
+		recorder := httptest.NewRecorder()
+		app.routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, path, nil))
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("DELETE %s status = %d, want %d", path, recorder.Code, http.StatusBadRequest)
+		}
 	}
 }
 
