@@ -207,8 +207,11 @@ button { color: inherit; }
 .maplibregl-ctrl-group button { width: 34px; height: 34px; }
 .maplibregl-ctrl-group button + button { border-top-color: var(--line); }
 .maplibregl-ctrl-icon { filter: invert(1); opacity: .8; }
-.maplibregl-ctrl-attrib { color: #777; background: rgba(10, 11, 13, .7) !important; }
-.maplibregl-ctrl-attrib a { color: #999; }
+.maplibregl-ctrl-attrib { color: #aeb3b8; border: 1px solid rgba(255, 255, 255, .08); background: rgba(10, 11, 13, .58) !important; backdrop-filter: blur(8px); }
+.maplibregl-ctrl-attrib-inner { color: #aeb3b8; }
+.maplibregl-ctrl-attrib a { color: #c8ccd0; }
+.maplibregl-ctrl-attrib a:hover { color: var(--accent); }
+.maplibregl-ctrl-attrib-button { filter: invert(1); opacity: .62; }
 
 @media (max-width: 760px) {
   body { overflow: hidden; }
