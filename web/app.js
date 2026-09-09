@@ -1,4 +1,4 @@
-const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, galleryTrackId: null, gallerySelectionMode: false, selectedGalleryPhotoIds: new Set(), category: "", dateFrom: "", dateTo: "", sortBy: "startedAt", sortDirection: "desc", mapReady: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
+const state = { tracks: [], photos: [], selectedId: null, selectedPhotoId: null, galleryTrackId: null, gallerySelectionMode: false, selectedGalleryPhotoIds: new Set(), category: "", dateFrom: "", dateTo: "", sortBy: "startedAt", sortDirection: "desc", mapReady: false, terrain3D: false, endpointMarkers: [], activityMarkers: [], photoMarkers: [] };
 const palette = ["#d7ff43", "#ff8a5b", "#55d8ff", "#f0bbff", "#72e6a1", "#ffd166"];
 const elements = {
   fileInput: document.querySelector("#file-input"),
@@ -29,6 +29,33 @@ map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-lef
 
 map.on("load", () => {
   map.addSource("activities", { type: "geojson", data: featureCollection() });
+  map.addSource("terrain", {
+    type: "raster-dem",
+    tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+    tileSize: 256,
+    maxzoom: 15,
+    encoding: "terrarium",
+    attribution: "Elevation tiles © Mapzen"
+  });
+  map.addSource("terrain-hillshade", {
+    type: "raster-dem",
+    tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+    tileSize: 256,
+    maxzoom: 15,
+    encoding: "terrarium"
+  });
+  map.addLayer({
+    id: "terrain-hillshade",
+    type: "hillshade",
+    source: "terrain-hillshade",
+    layout: { visibility: "none" },
+    paint: {
+      "hillshade-shadow-color": "#101513",
+      "hillshade-highlight-color": "#d7ff43",
+      "hillshade-accent-color": "#56634b",
+      "hillshade-exaggeration": 0.25
+    }
+  });
   map.addLayer({
     id: "activity-casing",
     type: "line",
@@ -46,6 +73,7 @@ map.on("load", () => {
     },
   });
   state.mapReady = true;
+  document.querySelector("#terrain-toggle").disabled = false;
   syncMap();
 });
 
@@ -55,6 +83,21 @@ map.on("click", "activities", (event) => {
 });
 map.on("mouseenter", "activities", () => { map.getCanvas().style.cursor = "pointer"; });
 map.on("mouseleave", "activities", () => { map.getCanvas().style.cursor = ""; });
+
+function toggleTerrain() {
+  if (!state.mapReady) return;
+  state.terrain3D = !state.terrain3D;
+  map.setTerrain(state.terrain3D ? { source: "terrain", exaggeration: 1.25 } : null);
+  map.setLayoutProperty("terrain-hillshade", "visibility", state.terrain3D ? "visible" : "none");
+  map.easeTo({ pitch: state.terrain3D ? 60 : 0, bearing: state.terrain3D ? -20 : 0, duration: 900 });
+
+  const button = document.querySelector("#terrain-toggle");
+  button.classList.toggle("active", state.terrain3D);
+  button.setAttribute("aria-pressed", state.terrain3D);
+  button.setAttribute("aria-label", state.terrain3D ? "Disable 3D terrain" : "Enable 3D terrain");
+  button.title = state.terrain3D ? "Return to 2D map" : "Enable 3D terrain";
+  button.querySelector("span").textContent = state.terrain3D ? "2D" : "3D";
+}
 
 function featureCollection() {
   return {
@@ -670,6 +713,7 @@ elements.trackList.addEventListener("click", (event) => {
 document.querySelector("#fit-button").addEventListener("click", () => fitTracks());
 document.querySelector("#focus-track").addEventListener("click", () => selectTrack(state.selectedId, true));
 document.querySelector("#track-photos").addEventListener("click", openTrackGallery);
+document.querySelector("#terrain-toggle").addEventListener("click", toggleTerrain);
 document.querySelector("#add-track-photos").addEventListener("click", () => elements.trackPhotoInput.click());
 document.querySelector("#select-gallery-photos").addEventListener("click", toggleGallerySelectionMode);
 document.querySelector("#delete-gallery-photos").addEventListener("click", deleteSelectedGalleryPhotos);

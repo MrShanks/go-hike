@@ -84,6 +84,8 @@ button { color: inherit; }
 .map-title span { color: var(--accent); font-size: 9px; font-weight: 700; }
 .map-title h1 { margin: 4px 0 0; font-size: 22px; font-weight: 500; }
 .map-actions { display: flex; gap: 8px; pointer-events: auto; }
+.terrain-toggle.active { color: #101408; border-color: var(--accent); background: var(--accent); }
+.terrain-toggle:disabled { cursor: wait; opacity: .45; }
 .glass-button, .primary-button, .secondary-button, .danger-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; border: 0; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; }
 .glass-button { border: 1px solid var(--line); background: rgba(18, 21, 24, 0.82); backdrop-filter: blur(18px); }
 .primary-button { color: var(--accent-dark); background: var(--accent); }
