@@ -52,7 +52,11 @@ The bind mount keeps imported GPX and photo files in this repository's `data/` d
 - `main.go` contains application startup, route registration, and shared HTTP helpers.
 - `tracks.go` owns GPX/FIT parsing, track persistence, and track handlers.
 - `photos.go` owns photo parsing, persistence, matching, and photo handlers.
-- `web/` contains the embedded browser interface.
+- `web/app-core.js` contains shared UI state, DOM references, formatting, and notifications.
+- `web/app-map.js` owns MapLibre setup, terrain, map layers, and markers.
+- `web/app.js` owns activity and photo workflows and rendering.
+- `web/app-events.js` owns event registration, drag and drop, and application bootstrap.
+- `web/index.html` and `web/styles.css` define the embedded interface and visual system.
 - `main_test.go` covers parsing, matching, imports, persistence, and route contracts.
 
 ## Test
