@@ -37,9 +37,15 @@
 
 			<div class="library-heading">
 				<span>Activity library</span>
-				<button class="icon-button" id="import-button" type="button" aria-label="Import activity files" title="Import activity">
-					<i data-lucide="plus"></i>
-				</button>
+				<div class="library-actions">
+					<button class="track-selection-delete" id="delete-selected-tracks" type="button" aria-label="Delete selected activities" title="Delete selected activities" hidden disabled><i data-lucide="trash-2"></i><span id="track-selection-count">0</span></button>
+					<button class="icon-button" id="select-tracks" type="button" aria-label="Select activities" title="Select activities" aria-pressed="false">
+						<i data-lucide="square-check-big"></i>
+					</button>
+					<button class="icon-button" id="import-button" type="button" aria-label="Import activity files" title="Import activity">
+						<i data-lucide="plus"></i>
+					</button>
+				</div>
 			</div>
 			<div class="library-filters" aria-label="Activity filters">
 				<label class="category-filter">
@@ -78,6 +84,7 @@
 				<span>Your activity files stay on this server.</span>
 			</footer>
 		</aside>
+		<div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-label="Resize activity panel" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="560" aria-valuenow="332" tabindex="0"></div>
 
 		<main class="map-region">
 			<div id="map" aria-label="Map of imported activity tracks"></div>

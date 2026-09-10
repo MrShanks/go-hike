@@ -319,6 +319,73 @@ func TestImportTracksKeepsValidFilesWhenAnotherIsRejected(t *testing.T) {
 	}
 }
 
+func TestImportTracksAllowsBatchLargerThanSingleFileLimit(t *testing.T) {
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	chunk := bytes.Repeat([]byte("x"), 26<<20)
+	for _, name := range []string{"first.gpx", "second.gpx"} {
+		part, err := writer.CreateFormFile("files", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tracks", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app := &server{dataDir: t.TempDir()}
+	app.importTracks(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	var result trackImportResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rejected) != 2 {
+		t.Errorf("Rejected = %#v, want both invalid files parsed from the batch", result.Rejected)
+	}
+}
+
+func TestImportTracksRejectsFileLargerThanLimit(t *testing.T) {
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("files", "oversized.gpx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(bytes.Repeat([]byte("x"), maxTrackFileSize+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/tracks", body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	recorder := httptest.NewRecorder()
+	app := &server{dataDir: t.TempDir()}
+	app.importTracks(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	var result trackImportResult
+	if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Imported) != 0 || len(result.Rejected) != 1 || result.Rejected[0].Reason != "file exceeds the 50 MiB limit" {
+		t.Errorf("result = %#v, want one oversized-file rejection", result)
+	}
+}
+
 func TestRenameTrackPersistsNameOverride(t *testing.T) {
 	contents := []byte(`<gpx><trk><name>Original name</name><type>hiking</type><trkseg>
 		<trkpt lat="46" lon="7"><time>2026-08-20T08:00:00Z</time></trkpt>
@@ -419,6 +486,7 @@ func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 		record.Timestamp = time.Date(2026, 8, 20, 8, index*30, 0, 0, time.UTC)
 		record.PositionLat = fitdecoder.NewLatitudeDegrees(coordinates[0])
 		record.PositionLong = fitdecoder.NewLongitudeDegrees(coordinates[1])
+		record.EnhancedAltitude = uint32(3000 + index*500)
 		activity.Records = append(activity.Records, record)
 	}
 
@@ -454,6 +522,9 @@ func TestImportFITConvertsAndSavesGPX(t *testing.T) {
 	}
 	if len(result.Imported) != 1 || result.Imported[0].Name != "Running · 20 Aug 2026" || result.Imported[0].Activity != "Running" || result.Imported[0].ActivityType != "trail_running" || result.Imported[0].FileName != "morning-run.fit" {
 		t.Fatalf("Imported = %#v, want one converted running activity", result.Imported)
+	}
+	if result.Imported[0].LowestPoint == nil || *result.Imported[0].LowestPoint != 100 || result.Imported[0].HighestPoint == nil || *result.Imported[0].HighestPoint != 200 {
+		t.Errorf("elevation range = %v to %v, want 100 to 200", result.Imported[0].LowestPoint, result.Imported[0].HighestPoint)
 	}
 	matches, err := filepath.Glob(filepath.Join(app.dataDir, "*.gpx"))
 	if err != nil || len(matches) != 1 {

@@ -21,7 +21,10 @@ import (
 	fitdecoder "github.com/tormoder/fit"
 )
 
-const maxUploadSize = 25 << 20
+const (
+	maxTrackFileSize = 50 << 20
+	maxTrackBatch    = 200 << 20
+)
 
 type gpxDocument struct {
 	Tracks []gpxTrack `xml:"trk"`
@@ -101,10 +104,10 @@ func (s *server) listTracks(w http.ResponseWriter, _ *http.Request) {
 func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 	startedAt := time.Now()
 	log.Printf("track upload started: remote=%q content_length=%d content_type=%q data_dir=%q", r.RemoteAddr, r.ContentLength, r.Header.Get("Content-Type"), s.dataDir)
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTrackBatch)
+	if err := r.ParseMultipartForm(maxTrackFileSize); err != nil {
 		log.Printf("track upload failed: could not parse multipart form: %v", err)
-		writeError(w, http.StatusBadRequest, "Upload GPX or FIT files up to 25 MB")
+		writeError(w, http.StatusBadRequest, "Upload up to 200 MiB per batch")
 		return
 	}
 
@@ -236,14 +239,20 @@ func (s *server) loadTracks() ([]track, error) {
 }
 
 func readUploadedTrack(header *multipart.FileHeader) (track, []byte, error) {
+	if header.Size > maxTrackFileSize {
+		return track{}, nil, errors.New("file exceeds the 50 MiB limit")
+	}
 	file, err := header.Open()
 	if err != nil {
 		return track{}, nil, err
 	}
 	defer file.Close()
-	contents, err := io.ReadAll(file)
+	contents, err := io.ReadAll(io.LimitReader(file, maxTrackFileSize+1))
 	if err != nil {
 		return track{}, nil, err
+	}
+	if len(contents) > maxTrackFileSize {
+		return track{}, nil, errors.New("file exceeds the 50 MiB limit")
 	}
 	nameSource := ""
 	switch strings.ToLower(filepath.Ext(header.Filename)) {
@@ -286,7 +295,7 @@ func fitToGPX(contents []byte, fileName string) ([]byte, string, error) {
 			point.Time = record.Timestamp
 		}
 		if record.EnhancedAltitude != ^uint32(0) {
-			elevation := float64(record.EnhancedAltitude)/1000 - 500
+			elevation := float64(record.EnhancedAltitude)/5 - 500
 			point.Elevation = &elevation
 		} else if record.Altitude != ^uint16(0) {
 			elevation := float64(record.Altitude)/5 - 500

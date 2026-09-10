@@ -20,8 +20,13 @@ body { overflow: hidden; }
 button, input, select { font: inherit; }
 button { color: inherit; }
 
-.app-shell { display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100vh; height: 100dvh; }
+.app-shell { position: relative; display: grid; grid-template-columns: var(--sidebar) 1fr; height: 100vh; height: 100dvh; }
 .sidebar { z-index: 5; display: flex; min-width: 0; min-height: 0; flex-direction: column; background: rgba(14, 16, 19, 0.98); border-right: 1px solid var(--line); }
+.sidebar-resizer { position: absolute; z-index: 7; top: 0; bottom: 0; left: calc(var(--sidebar) - 4px); width: 8px; cursor: col-resize; touch-action: none; }
+.sidebar-resizer::after { position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; content: ""; background: transparent; transition: background 150ms ease; }
+.sidebar-resizer:hover::after, .sidebar-resizer:focus-visible::after, .sidebar-resizer.dragging::after { background: var(--accent); }
+.sidebar-resizer:focus-visible { outline: 0; }
+body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .brand { display: flex; align-items: center; gap: 12px; height: 88px; padding: 0 24px; border-bottom: 1px solid var(--line); }
 .brand-mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 8px; color: var(--accent-dark); background: var(--accent); }
 .brand-mark svg { width: 21px; }
@@ -39,6 +44,12 @@ button { color: inherit; }
 .overview-stats span { margin-top: 5px; color: var(--muted); font-size: 10px; }
 
 .library-heading { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; font-size: 12px; font-weight: 600; }
+.library-actions { display: flex; align-items: center; gap: 6px; }
+.library-actions .icon-button.active { color: var(--accent); border-color: rgba(215, 255, 67, .55); }
+.track-selection-delete { display: inline-flex; height: 34px; align-items: center; gap: 5px; padding: 0 9px; color: var(--danger); border: 1px solid rgba(255, 107, 107, .25); border-radius: 7px; background: rgba(255, 107, 107, .07); cursor: pointer; font-size: 10px; font-weight: 700; }
+.track-selection-delete[hidden] { display: none; }
+.track-selection-delete:disabled { cursor: default; opacity: .45; }
+.track-selection-delete svg { width: 14px; }
 .library-filters { display: grid; gap: 7px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
 .category-filter, .sort-field { position: relative; display: flex; align-items: center; }
 .category-filter > svg, .sort-field > svg { position: absolute; left: 10px; width: 13px; color: var(--muted); pointer-events: none; }
@@ -67,6 +78,10 @@ button { color: inherit; }
 .activity-icon { display: grid; width: 28px; height: 28px; align-self: center; place-items: center; color: #c8cdd3; border: 1px solid var(--line); border-radius: 7px; background: rgba(255, 255, 255, .035); }
 .activity-icon svg { width: 14px; height: 14px; }
 .track-item.active .activity-icon { color: var(--accent); border-color: rgba(215, 255, 67, .25); }
+.track-check { display: grid; width: 28px; height: 28px; padding: 0; align-self: center; place-items: center; color: transparent; border: 1px solid #686e76; border-radius: 7px; background: rgba(255, 255, 255, .035); cursor: pointer; }
+.track-check svg { width: 15px; }
+.track-item.selected { border-color: rgba(215, 255, 67, .35); background: rgba(215, 255, 67, .06); }
+.track-item.selected .track-check { color: var(--accent-dark); border-color: var(--accent); background: var(--accent); }
 .track-copy { min-width: 0; }
 .track-name { display: block; overflow: hidden; width: 100%; padding: 0; color: var(--text); border: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; background: transparent; font-size: 12px; font-weight: 700; cursor: text; }
 .track-name:hover { color: var(--accent); }
@@ -217,6 +232,7 @@ button { color: inherit; }
   body { overflow: hidden; }
   .app-shell { grid-template-columns: 1fr; grid-template-rows: 40vh 60vh; grid-template-rows: 40dvh 60dvh; height: 100vh; height: 100dvh; }
   .sidebar { grid-row: 2; border-top: 1px solid var(--line); border-right: 0; }
+  .sidebar-resizer { display: none; }
   .map-region { grid-row: 1; }
   .brand { height: 58px; padding: 0 16px; }
   .brand-mark { width: 32px; height: 32px; }

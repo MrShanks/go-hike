@@ -59,15 +59,51 @@ function render() {
 	  elements.trackList.innerHTML = '<div class="library-empty">No activities match these filters.</div>';
   } else {
     elements.trackList.innerHTML = orderedTracks.map((track) => `
-    <div class="track-item ${track.id === state.selectedId ? "active" : ""}" data-track-id="${track.id}">
+		<div class="track-item ${track.id === state.selectedId ? "active" : ""} ${state.selectedTrackIds.has(track.id) ? "selected" : ""}" data-track-id="${track.id}">
 		<span class="track-swatch" style="background:${trackColor(track)}"></span>
-		<span class="activity-icon" title="${escapeHTML(track.activity || "Activity")}"><i data-lucide="${activityIcon(track.activityType)}"></i></span>
+		${state.trackSelectionMode ? `<button class="track-check" type="button" aria-label="Select ${escapeHTML(track.name)}" aria-pressed="${state.selectedTrackIds.has(track.id)}"><i data-lucide="check"></i></button>` : `<span class="activity-icon" title="${escapeHTML(track.activity || "Activity")}"><i data-lucide="${activityIcon(track.activityType)}"></i></span>`}
     <span class="track-copy"><button class="track-name" type="button" aria-label="Rename ${escapeHTML(track.name)}" title="Rename activity">${escapeHTML(track.name)}</button><span>${escapeHTML(track.activity || "Activity")} · ${formatDate(track.startedAt)}</span></span>
         <span class="track-distance">${formatDistance(track.distanceKm)}</span>
     </div>`).join("");
   }
+  renderTrackSelectionControls();
   lucide.createIcons();
   syncMap();
+}
+
+function renderTrackSelectionControls() {
+  const selectButton = document.querySelector("#select-tracks");
+  const deleteButton = document.querySelector("#delete-selected-tracks");
+  selectButton.classList.toggle("active", state.trackSelectionMode);
+  selectButton.setAttribute("aria-pressed", state.trackSelectionMode);
+  selectButton.title = state.trackSelectionMode ? "Cancel selection" : "Select activities";
+  deleteButton.hidden = !state.trackSelectionMode;
+  deleteButton.disabled = state.selectedTrackIds.size === 0;
+  document.querySelector("#track-selection-count").textContent = state.selectedTrackIds.size;
+  deleteButton.setAttribute("aria-label", `Delete ${state.selectedTrackIds.size} selected activities`);
+}
+
+function toggleTrackSelectionMode() {
+  state.trackSelectionMode = !state.trackSelectionMode;
+  state.selectedTrackIds.clear();
+  render();
+}
+
+async function deleteSelectedTracks() {
+  const ids = [...state.selectedTrackIds];
+  if (!ids.length || !window.confirm(`Delete ${ids.length} selected ${ids.length === 1 ? "activity" : "activities"}?`)) return;
+  const results = await Promise.all(ids.map(async (id) => ({ id, ok: (await fetch(`/api/tracks/${id}`, { method: "DELETE" })).ok })));
+  const deletedIds = new Set(results.filter((result) => result.ok).map((result) => result.id));
+  state.tracks = state.tracks.filter((track) => !deletedIds.has(track.id));
+  state.selectedTrackIds.clear();
+  if (deletedIds.has(state.selectedId)) {
+    state.selectedId = null;
+    elements.detailPanel.classList.remove("open");
+  }
+  render();
+  if (state.tracks.length) fitTracks();
+  const failed = results.length - deletedIds.size;
+  showToast(failed ? `${deletedIds.size} deleted · ${failed} could not be deleted` : `${deletedIds.size} ${deletedIds.size === 1 ? "activity" : "activities"} deleted`);
 }
 
 function renderCategoryOptions() {
