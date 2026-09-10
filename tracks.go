@@ -79,8 +79,9 @@ type track struct {
 }
 
 type trackImportResult struct {
-	Imported []track          `json:"imported"`
-	Rejected []trackRejection `json:"rejected"`
+	Imported   []track          `json:"imported"`
+	Duplicates []track          `json:"duplicates"`
+	Rejected   []trackRejection `json:"rejected"`
 }
 
 type trackRejection struct {
@@ -119,7 +120,7 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("track upload parsed: files=%d", len(files))
 
-	result := trackImportResult{Imported: make([]track, 0, len(files)), Rejected: make([]trackRejection, 0)}
+	result := trackImportResult{Imported: make([]track, 0, len(files)), Duplicates: make([]track, 0), Rejected: make([]trackRejection, 0)}
 	for _, header := range files {
 		log.Printf("track upload processing: filename=%q size=%d", header.Filename, header.Size)
 		parsed, contents, err := readUploadedTrack(header)
@@ -130,6 +131,15 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("track upload resolved: filename=%q track_name=%q name_source=%q activity_type=%q started_at=%v", header.Filename, parsed.Name, parsed.NameSource, parsed.ActivityType, parsed.StartedAt)
 		destination := filepath.Join(s.dataDir, parsed.ID+".gpx")
+		if _, err := os.Stat(destination); err == nil {
+			log.Printf("track upload duplicate: filename=%q track_name=%q id=%q", header.Filename, parsed.Name, parsed.ID)
+			result.Duplicates = append(result.Duplicates, parsed)
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("track upload failed: could not check destination=%q error=%v", destination, err)
+			writeError(w, http.StatusInternalServerError, "Could not save your activity")
+			return
+		}
 		if err := os.WriteFile(destination, contents, 0o644); err != nil {
 			log.Printf("track upload failed: filename=%q track_name=%q id=%q size=%d destination=%q error=%v", header.Filename, parsed.Name, parsed.ID, len(contents), destination, err)
 			writeError(w, http.StatusInternalServerError, "Could not save your activity")
@@ -139,7 +149,7 @@ func (s *server) importTracks(w http.ResponseWriter, r *http.Request) {
 		result.Imported = append(result.Imported, parsed)
 	}
 
-	log.Printf("track upload completed: imported=%d rejected=%d duration=%s", len(result.Imported), len(result.Rejected), time.Since(startedAt))
+	log.Printf("track upload completed: imported=%d duplicates=%d rejected=%d duration=%s", len(result.Imported), len(result.Duplicates), len(result.Rejected), time.Since(startedAt))
 	writeJSON(w, http.StatusCreated, result)
 }
 

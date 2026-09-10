@@ -319,6 +319,62 @@ func TestImportTracksKeepsValidFilesWhenAnotherIsRejected(t *testing.T) {
 	}
 }
 
+func TestImportTracksReportsDuplicate(t *testing.T) {
+	contents := []byte(`<gpx><trk><name>Morning hike</name><type>hiking</type><trkseg>
+		<trkpt lat="46" lon="7"/><trkpt lat="46.01" lon="7.01"/>
+	</trkseg></trk></gpx>`)
+	app := &server{dataDir: t.TempDir()}
+
+	importTrack := func() trackImportResult {
+		body := new(bytes.Buffer)
+		writer := multipart.NewWriter(body)
+		part, err := writer.CreateFormFile("files", "morning-hike.gpx")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(contents); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/api/tracks", body)
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		recorder := httptest.NewRecorder()
+		app.importTracks(recorder, request)
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+		}
+		var result trackImportResult
+		if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	first := importTrack()
+	if len(first.Imported) != 1 {
+		t.Fatalf("first import = %#v, want one imported activity", first)
+	}
+	if err := os.WriteFile(filepath.Join(app.dataDir, first.Imported[0].ID+".json"), []byte(`{"name":"My renamed hike"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second := importTrack()
+	if len(first.Duplicates) != 0 {
+		t.Fatalf("first import = %#v, want one imported activity", first)
+	}
+	if len(second.Imported) != 0 || len(second.Duplicates) != 1 || second.Duplicates[0].Name != "Morning hike" {
+		t.Errorf("second import = %#v, want one named duplicate", second)
+	}
+	loaded, err := app.loadTracks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0].Name != "My renamed hike" {
+		t.Errorf("loaded tracks = %#v, want preserved custom name", loaded)
+	}
+}
+
 func TestImportTracksAllowsBatchLargerThanSingleFileLimit(t *testing.T) {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)

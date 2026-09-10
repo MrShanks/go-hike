@@ -354,18 +354,22 @@ async function importFiles(fileList) {
     const response = await fetch("/api/tracks", { method: "POST", body });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Import failed");
+  const duplicates = result.duplicates || [];
   const importedIds = new Set(result.imported.map((track) => track.id));
     state.tracks = [...result.imported, ...state.tracks.filter((track) => !importedIds.has(track.id))];
   await loadPhotos();
   	renderCategoryOptions();
     render();
   if (result.imported.length) fitTracks(result.imported);
+  const summary = [];
+  if (result.imported.length) summary.push(`${result.imported.length} added`);
+  if (duplicates.length === 1) summary.push(`“${duplicates[0].name}” was not imported because it already exists`);
+  if (duplicates.length > 1) summary.push(`${duplicates.length} files were not imported because those activities already exist`);
   if (result.rejected.length) {
     const rejected = result.rejected[0];
-    showToast(`${result.imported.length} added · ${result.rejected.length} skipped: ${rejected.name} — ${rejected.reason}`, 7000);
-  } else {
-    showToast(`${result.imported.length} ${result.imported.length === 1 ? "activity" : "activities"} added`);
+    summary.push(`${result.rejected.length} invalid: ${rejected.name} — ${rejected.reason}`);
   }
+  showToast(summary.join(" · "), duplicates.length || result.rejected.length ? 4500 : 2600);
   } catch (error) {
     showToast(error.message);
   } finally {
